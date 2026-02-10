@@ -1,0 +1,9 @@
+{
+  "name": "学習プリント隠し",
+  "short_name": "プリント隠し",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": []
+}
