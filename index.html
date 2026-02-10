@@ -4,8 +4,47 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>学習プリント隠し</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 16px;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+    }
+    img {
+      width: 100%;
+      display: block;
+    }
+  </style>
 </head>
 <body>
-  <h1>Hello Print Mask 👋</h1>
+  <div class="container">
+    <h1>学習プリント隠し</h1>
+
+    <input
+      type="file"
+      accept="image/*"
+      capture="environment"
+      id="imageInput"
+    />
+
+    <img id="preview" alt="" />
+  </div>
+
+  <script>
+    const input = document.getElementById('imageInput');
+    const preview = document.getElementById('preview');
+
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      if (!file) return;
+
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+    });
+  </script>
 </body>
 </html>
