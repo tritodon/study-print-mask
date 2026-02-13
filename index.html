@@ -72,7 +72,7 @@
       <input type="file" accept="image/*" capture="environment" id="imageInput" />
     </div>
     <div class="row">
-      <button id="commitBtn" type="button" disabled>この白塗りを1問にする（確定）</button>
+      <!-- <button id="commitBtn" type="button" disabled>この白塗りを1問にする（確定）</button> -->
       <button id="clearStrokeBtn" type="button" disabled>いま描いた白塗りを消す</button>
       <button id="clearAllBtn" type="button" disabled>全て削除</button>
       <span class="pill" id="countPill">領域: 0</span>
@@ -99,7 +99,7 @@
     const modePill = document.getElementById('modePill');
 
     // ---- 設定 ----
-    const BRUSH_SIZE = 26;
+    const BRUSH_SIZE = 18;
 
     // ---- 状態 ----
     let ctx = null;
@@ -304,11 +304,16 @@
       redrawOverlay();
     }
 
-    function onPointerUp(e) {
-      if (!drawing) return;
-      drawing = false;
-      try { overlay.releasePointerCapture(e.pointerId); } catch { }
+  function onPointerUp(e) {
+    if (!drawing) return;
+    drawing = false;
+    try { overlay.releasePointerCapture(e.pointerId); } catch { }
+
+    if (mode === 'edit' && hasStroke) {
+      commitStrokeAsRegion(); // 1なぞり=1問
     }
+  }
+
 
     overlay.addEventListener('pointerdown', onPointerDown);
     overlay.addEventListener('pointermove', onPointerMove);
