@@ -5,12 +5,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>学習プリント隠し</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
-    .container { max-width: 800px; margin: auto; }
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 16px;
+    }
 
-    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
-    button { padding: 8px 12px; }
-    .hint { font-size: 12px; opacity: .75; margin-bottom: 8px; }
+    .container {
+      max-width: 800px;
+      margin: auto;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: 12px 0;
+    }
+
+    button {
+      padding: 8px 12px;
+    }
+
+    .hint {
+      font-size: 12px;
+      opacity: .75;
+      margin-bottom: 8px;
+    }
 
     .stage {
       position: relative;
@@ -19,7 +41,13 @@
       user-select: none;
       -webkit-user-drag: none;
     }
-    #photo { width: 100%; height: auto; display: block; }
+
+    #photo {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
     #overlay {
       position: absolute;
       inset: 0;
@@ -27,6 +55,7 @@
       height: 100%;
       display: block;
     }
+
     .pill {
       display: inline-block;
       padding: 3px 8px;
@@ -39,11 +68,9 @@
 <body>
   <div class="container">
     <h1>学習プリント隠し</h1>
-
     <div class="row">
       <input type="file" accept="image/*" capture="environment" id="imageInput" />
     </div>
-
     <div class="row">
       <button id="commitBtn" type="button" disabled>この白塗りを1問にする（確定）</button>
       <button id="clearStrokeBtn" type="button" disabled>いま描いた白塗りを消す</button>
@@ -52,18 +79,12 @@
       <span class="pill" id="modePill">モード: 編集</span>
       <button id="modeBtn" type="button" disabled>学習モードへ</button>
     </div>
-
-    <div class="hint">
-      編集モード：指でなぞって白塗り →「確定」すると1領域になります。<br>
-      学習モード：領域をタップすると、その領域だけ表示/非表示が切り替わります。
-    </div>
-
+    <div class="hint"> 編集モード：指でなぞって白塗り →「確定」すると1領域になります。<br> 学習モード：領域をタップすると、その領域だけ表示/非表示が切り替わります。 </div>
     <div class="stage" id="stage" style="display:none;">
       <img id="photo" alt="" />
       <canvas id="overlay"></canvas>
     </div>
   </div>
-
   <script>
     const input = document.getElementById('imageInput');
     const stage = document.getElementById('stage');
@@ -88,6 +109,7 @@
     let drawing = false;
     let hasStroke = false;
     let lastX = 0, lastY = 0;
+    let cssW = 0, cssH = 0;
 
     // 「いま描いている」ストローク用のオフスクリーンCanvas
     let strokeCanvas = document.createElement('canvas');
@@ -118,26 +140,28 @@
       clearStrokeBtn.disabled = (mode !== 'edit') || !hasStroke;
     }
 
-let cssW = 0, cssH = 0;
-    
+
     function setupCanvasSizes() {
-  const rect = photo.getBoundingClientRect();
-  cssW = Math.max(1, Math.round(rect.width));
-  cssH = Math.max(1, Math.round(rect.height));
+      const rect = photo.getBoundingClientRect();
+      cssW = Math.max(1, Math.round(rect.width));
+      cssH = Math.max(1, Math.round(rect.height));
 
       dpr = window.devicePixelRatio || 1;
 
       // 表示用 overlay
+
       overlay.style.width = cssW + 'px';
       overlay.style.height = cssH + 'px';
       overlay.width = Math.round(cssW * dpr);
       overlay.height = Math.round(cssH * dpr);
+
       ctx = overlay.getContext('2d', { willReadFrequently: true });
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // stroke（編集中の1領域）
       strokeCanvas.width = Math.round(cssW * dpr);
       strokeCanvas.height = Math.round(cssH * dpr);
+
       strokeCtx = strokeCanvas.getContext('2d', { willReadFrequently: true });
       strokeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -169,48 +193,48 @@ let cssW = 0, cssH = 0;
       redrawOverlay();
     }
 
-    function commitStrokeAsRegion() {
-      if (!hasStroke) return;
+  function commitStrokeAsRegion() {
+    if (!hasStroke) return;
 
-      // strokeCanvas をコピーして領域Canvasにする
-      const c = document.createElement('canvas');
-      c.width = strokeCanvas.width;
-      c.height = strokeCanvas.height;
+    const c = document.createElement('canvas');
+    c.width = strokeCanvas.width;   // device pixel
+    c.height = strokeCanvas.height; // device pixel
 
-      const cctx = c.getContext('2d', { willReadFrequently: true });
-      // 座標系合わせ（CSS px基準）
-      cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      cctx.drawImage(strokeCanvas, 0, 0);
+    const cctx = c.getContext('2d', { willReadFrequently: true });
 
-      regions.push({
-        id: nextId++,
-        canvas: c,
-        ctx: cctx,
-        visible: true
-      });
+    // ★ここ重要：transformはかけない（identityのままピクセルコピー）
+    cctx.setTransform(1, 0, 0, 1, 0, 0);
+    cctx.drawImage(strokeCanvas, 0, 0);
 
-      clearStroke();
-      updateUI();
-      redrawOverlay();
-    }
+    regions.push({
+      id: nextId++,
+      canvas: c,
+      ctx: cctx,
+      visible: true
+    });
 
-function redrawOverlay() {
-  if (!ctx) return;
-
-  ctx.clearRect(0, 0, overlay.width, overlay.height);
-
-  if (mode === 'study') {
-    for (const r of regions) {
-      if (!r.visible) continue;
-      ctx.drawImage(r.canvas, 0, 0, cssW, cssH);
-    }
-  } else {
-    for (const r of regions) {
-      ctx.drawImage(r.canvas, 0, 0, cssW, cssH);
-    }
-    ctx.drawImage(strokeCanvas, 0, 0, cssW, cssH);
+    clearStroke();
+    updateUI();
+    redrawOverlay();
   }
-}
+
+  function redrawOverlay() {
+    if (!ctx) return;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    if (mode === 'study') {
+      for (const r of regions) {
+        if (!r.visible) continue;
+        ctx.drawImage(r.canvas, 0, 0, cssW, cssH);
+      }
+    } else {
+      for (const r of regions) {
+        ctx.drawImage(r.canvas, 0, 0, cssW, cssH);
+      }
+      ctx.drawImage(strokeCanvas, 0, 0, cssW, cssH);
+    }
+  }
+
 
     function getPosFromEvent(e) {
       const rect = overlay.getBoundingClientRect();
@@ -283,7 +307,7 @@ function redrawOverlay() {
     function onPointerUp(e) {
       if (!drawing) return;
       drawing = false;
-      try { overlay.releasePointerCapture(e.pointerId); } catch {}
+      try { overlay.releasePointerCapture(e.pointerId); } catch { }
     }
 
     overlay.addEventListener('pointerdown', onPointerDown);
