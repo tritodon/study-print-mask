@@ -171,9 +171,10 @@
       <div class="row">
         <button id="undoBtn" type="button" disabled><i class="fa-solid fa-arrow-rotate-left"></i></button>
         <button id="redoBtn" type="button" disabled><i class="fa-solid fa-arrow-rotate-right"></i></button>
-        <button id="clearAllBtn" type="button" disabled><i class="fa-solid fa-eraser"></i>全削除</button>
-        <button id="showAllBtn" type="button" disabled><i class="fa-solid fa-eye-slash"></i></button>
-        <button id="hideAllBtn" type="button" disabled><i class="fa-solid fa-eye"></i></button>
+        <button id="clearAllBtn" type="button" disabled><i class="fa-solid fa-eraser"></i> 全削除</button>
+        <button id="zoomResetBtn" type="button" disabled><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+        <button id="showAllBtn" type="button" disabled><i class="fa-solid fa-eye"></i> 表示</button>
+        <button id="hideAllBtn" type="button" disabled><i class="fa-solid fa-eye-slash"></i> 非表示</button>
         <button id="modeBtn" type="button" disabled>学習モードへ</button>
       </div>
       <div class="row">
@@ -331,6 +332,8 @@
     const hideAllBtn = document.getElementById('hideAllBtn');
 
     const viewport = document.getElementById('viewport');
+    const zoomResetBtn = document.getElementById('zoomResetBtn');
+
 
     /* =========================
        View helpers
@@ -438,27 +441,37 @@
       redrawOverlay();
     }
 
-    function updateEditorUI() {
-      countPill.textContent = `領域: ${current.regions.length}`;
-      modeBtn.disabled = !current.imageDataUrl;
-      clearAllBtn.disabled = !current.imageDataUrl || (current.regions.length === 0 && !hasStroke);
-      saveBtn.disabled = !current.imageDataUrl;
-      titleInput.value = current.title || '';
+  function updateEditorUI() {
+    countPill.textContent = `領域: ${current.regions.length}`;
+    modeBtn.disabled = !current.imageDataUrl;
+    clearAllBtn.disabled = !current.imageDataUrl || (current.regions.length === 0 && !hasStroke);
+    saveBtn.disabled = !current.imageDataUrl;
+    titleInput.value = current.title || '';
 
-      undoBtn.disabled = undoStack.length === 0;
-      redoBtn.disabled = redoStack.length === 0;
+    undoBtn.disabled = undoStack.length === 0;
+    redoBtn.disabled = redoStack.length === 0;
 
-      statusPill.textContent = current.updatedAt ? '保存済み/編集可' : '未保存';
+    statusPill.textContent = current.updatedAt ? '保存済み/編集可' : '未保存';
 
-      const inStudy = current.mode === 'study' && current.imageDataUrl && current.regions.length > 0;
-      showAllBtn.disabled = !inStudy;
-      hideAllBtn.disabled = !inStudy;
+    const isEdit = current.mode === 'edit';
+    const inStudy = current.mode === 'study' && current.imageDataUrl && current.regions.length > 0;
 
-      // ついでに編集モードでは見せない（見た目スッキリ）
-      showAllBtn.style.display = inStudy ? 'inline-block' : 'none';
-      hideAllBtn.style.display = inStudy ? 'inline-block' : 'none';
+    // ===== 学習モード用ボタン =====
+    showAllBtn.disabled = !inStudy;
+    hideAllBtn.disabled = !inStudy;
 
-    }
+    // 編集モードでは非表示
+    showAllBtn.style.display = inStudy ? 'inline-block' : 'none';
+    hideAllBtn.style.display = inStudy ? 'inline-block' : 'none';
+
+    // ===== 編集モード専用ボタン =====
+    undoBtn.style.display = isEdit ? 'inline-block' : 'none';
+    redoBtn.style.display = isEdit ? 'inline-block' : 'none';
+    clearAllBtn.style.display = isEdit ? 'inline-block' : 'none';
+
+    // ===== 共通 =====
+    zoomResetBtn.disabled = !current.imageDataUrl;
+  }
 
     function setAllVisible(visible) {
       if (current.regions.length === 0) return;
@@ -728,20 +741,20 @@
     /* =========================
        Pointer events
     ========================= */
-      const pointers = new Map();
-      let pinching = false;
-      let pinchStartDist = 0;
-      let pinchStartScale = 1;
-      let pinchStartMid = { x: 0, y: 0 };
-      let pinchStartView = { x: 0, y: 0 };
+    const pointers = new Map();
+    let pinching = false;
+    let pinchStartDist = 0;
+    let pinchStartScale = 1;
+    let pinchStartMid = { x: 0, y: 0 };
+    let pinchStartView = { x: 0, y: 0 };
 
-      function dist(a, b) {
-        const dx = a.x - b.x, dy = a.y - b.y;
-        return Math.hypot(dx, dy);
-      }
-      function mid(a, b) {
-        return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      }
+    function dist(a, b) {
+      const dx = a.x - b.x, dy = a.y - b.y;
+      return Math.hypot(dx, dy);
+    }
+    function mid(a, b) {
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
 
     function onPointerDown(e) {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -813,7 +826,7 @@
         return; // 描画しない
       }
 
-   if (!drawing || pinching || current.mode !== 'edit') return;
+      if (!drawing || pinching || current.mode !== 'edit') return;
 
       const { x, y } = getPosFromEvent(e);
       strokeCtx.beginPath();
@@ -825,28 +838,28 @@
       redrawOverlay();
     }
 
-  async function onPointerUp(e) {
-    pointers.delete(e.pointerId);
+    async function onPointerUp(e) {
+      pointers.delete(e.pointerId);
 
-    if (pinching) {
-      if (pointers.size < 2) {
-        pinching = false;
+      if (pinching) {
+        if (pointers.size < 2) {
+          pinching = false;
+        }
+        drawing = false;
+        hasStroke = false;
+        clearStroke();
+        return; // ← 絶対に addRegion しない
       }
+
+      if (!drawing) return;
       drawing = false;
-      hasStroke = false;
-      clearStroke();
-      return; // ← 絶対に addRegion しない
+
+      try { overlay.releasePointerCapture(e.pointerId); } catch { }
+
+      if (current.mode === 'edit' && hasStroke) {
+        await addRegionFromStroke();
+      }
     }
-
-    if (!drawing) return;
-    drawing = false;
-
-    try { overlay.releasePointerCapture(e.pointerId); } catch { }
-
-    if (current.mode === 'edit' && hasStroke) {
-      await addRegionFromStroke();
-    }
-  }
 
     overlay.addEventListener('pointerdown', onPointerDown);
     overlay.addEventListener('pointermove', onPointerMove);
@@ -906,7 +919,7 @@
       photo.onload = async () => {
         setupCanvasSizes();
 
-          viewScale = 1;
+        viewScale = 1;
         viewX = 0;
         viewY = 0;
         applyViewportTransform();
@@ -921,7 +934,7 @@
         setMode('edit');
         updateEditorUI();
         redrawOverlay();
-        
+
       };
     }
 
@@ -1004,6 +1017,17 @@
     showAllBtn.addEventListener('click', () => setAllVisible(true));
     hideAllBtn.addEventListener('click', () => setAllVisible(false));
 
+    function resetZoom() {
+      viewScale = 1;
+      viewX = 0;
+      viewY = 0;
+      applyViewportTransform();
+      // 念のため、ズーム後のrect等が変わったら再描画
+      redrawOverlay();
+    }
+
+    zoomResetBtn.addEventListener('click', resetZoom);
+
     // image input: new base image
     input.addEventListener('change', async () => {
       const file = input.files[0];
@@ -1035,7 +1059,7 @@
 
       photo.onload = () => {
         setupCanvasSizes();
-          viewScale = 1;
+        viewScale = 1;
         viewX = 0;
         viewY = 0;
         applyViewportTransform();
