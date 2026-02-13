@@ -21,22 +21,41 @@
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
-      align-items: center;
+      align-items: stretch;
       margin: 12px 0;
-    }
-
-    .rowChild {
-      display: flex;
-      gap: 8px;
     }
 
     button {
       padding: 8px 12px;
+      background: #2ea9e0;
+      border: 0;
+      color: #fff;
+      border-radius: 3px;
     }
 
     input[type="text"] {
       padding: 8px;
       min-width: 220px;
+      border-radius: 3px;
+      border: solid 1px #ccc;
+    }
+
+    input[type='file'] {
+      cursor: pointer;
+      border: 1px solid #ccc;
+      border-radius: 0.375rem;
+      padding-right: 0.5rem;
+      width: 100vw;
+    }
+
+    ::file-selector-button,
+    ::-webkit-file-upload-button {
+      background-color: #2ea9e0;
+      color: #fff;
+      border: solid 1px #2ea9e0;
+      cursor: pointer;
+      padding: 0.25rem 1rem;
+      margin-right: 1rem;
     }
 
     .hint {
@@ -116,35 +135,35 @@
   <div class="container">
     <!-- ===== LIST VIEW ===== -->
     <section id="listView" class="view active">
-      <h1><i class="fa-solid fa-clipboard"></i>学習プリント隠し<i class="fa-solid fa-pencil"></i></h1>
+      <h1><i class="fa-solid fa-pencil"></i> 学習プリント隠し</h1>
       <div class="row">
-        <button id="newBtn" type="button"><i class="fa-solid fa-circle-plus"></i>新規プリント</button>
-        <button id="cleanupBtn" type="button"><i class="fa-solid fa-trash-can"></i>期限切れを削除</button>
-        <button id="deleteAllBtn" type="button"><i class="fa-solid fa-trash-can"></i>全データ削除</button>
+        <button id="newBtn" type="button"><i class="fa-solid fa-circle-plus"></i> 新規プリント</button>
+        <button id="cleanupBtn" type="button"><i class="fa-solid fa-trash-can"></i> 期限切れを削除</button>
+        <button id="deleteAllBtn" type="button"><i class="fa-solid fa-trash-can"></i> 全データ削除</button>
         <span class="pill" id="storagePill">保存数: 0</span>
       </div>
-      <div class="hint"> 保存は端末内（IndexedDB）です。Safari等のサイトデータ削除で消える可能性があります。<br> デフォルト期限：14日（期限切れは一覧で警告表示） </div>
+      <div class="hint">保存は端末内（IndexedDB）です。Safari等のサイトデータ削除で消える可能性があります。<br> 保存期限：14日</div>
       <div id="list" class="list"></div>
     </section>
     <!-- ===== EDIT VIEW ===== -->
     <section id="editView" class="view">
       <div class="row">
-        <div class="rowChild">
-          <button id="backBtn" type="button">← 一覧へ</button>
-          <input id="titleInput" type="text" placeholder="タイトル（任意）" />
-          <button id="saveBtn" type="button" disabled><i class="fa-solid fa-floppy-disk"></i> 保存</button>
-        </div>
-        <span class="pill" id="countPill">領域: 0</span>
-        <span class="pill" id="modePill">モード: 編集</span>
-        <button id="modeBtn" type="button" disabled>学習モードへ</button>
+        <button id="backBtn" type="button"><i class="fa-solid fa-delete-left"></i></button>
+        <input id="titleInput" type="text" placeholder="タイトル（任意）" />
+        <button id="saveBtn" type="button" disabled><i class="fa-solid fa-floppy-disk"></i></button>
       </div>
       <div class="row">
-        <button id="undoBtn" type="button" disabled>Undo</button>
-        <button id="redoBtn" type="button" disabled>Redo</button>
+        <span class="pill" id="countPill">領域: 0</span>
+        <span class="pill" id="modePill">モード: 編集</span>
+        <span class="pill" id="statusPill">未保存</span>
+      </div>
+      <div class="row">
+        <button id="undoBtn" type="button" disabled><i class="fa-solid fa-arrow-rotate-left"></i></button>
+        <button id="redoBtn" type="button" disabled><i class="fa-solid fa-arrow-rotate-right"></i></button>
         <button id="clearAllBtn" type="button" disabled><i class="fa-solid fa-eraser"></i>全削除</button>
         <button id="showAllBtn" type="button" disabled><i class="fa-solid fa-eye-slash"></i></button>
         <button id="hideAllBtn" type="button" disabled><i class="fa-solid fa-eye"></i></button>
-        <span class="pill" id="statusPill">未保存</span>
+        <button id="modeBtn" type="button" disabled>学習モードへ</button>
       </div>
       <div class="row">
         <input type="file" accept="image/*" capture="environment" id="imageInput" />
@@ -330,7 +349,7 @@
       listEl.innerHTML = '';
 
       if (printsCache.length === 0) {
-        listEl.innerHTML = `<div class="hint">まだ保存されたプリントがありません。「＋ 新規プリント」から作成してください。</div>`;
+        listEl.innerHTML = `<div class="hint">まだ保存されたプリントがありません。「新規プリント」から作成してください。</div>`;
         return;
       }
 
