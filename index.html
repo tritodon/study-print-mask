@@ -118,10 +118,12 @@
       clearStrokeBtn.disabled = (mode !== 'edit') || !hasStroke;
     }
 
+let cssW = 0, cssH = 0;
+    
     function setupCanvasSizes() {
-      const rect = photo.getBoundingClientRect();
-      const cssW = Math.max(1, Math.round(rect.width));
-      const cssH = Math.max(1, Math.round(rect.height));
+  const rect = photo.getBoundingClientRect();
+  cssW = Math.max(1, Math.round(rect.width));
+  cssH = Math.max(1, Math.round(rect.height));
 
       dpr = window.devicePixelRatio || 1;
 
@@ -192,28 +194,23 @@
       redrawOverlay();
     }
 
-    function redrawOverlay() {
-      if (!ctx) return;
+function redrawOverlay() {
+  if (!ctx) return;
 
-      // 表示用overlayをクリア
-      ctx.clearRect(0, 0, overlay.width, overlay.height);
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-      // 学習モード：visible の領域だけ描画
-      // 編集モード：確定済み領域 + 編集中strokeを描画
-      if (mode === 'study') {
-        for (const r of regions) {
-          if (!r.visible) continue;
-          ctx.drawImage(r.canvas, 0, 0);
-        }
-      } else {
-        for (const r of regions) {
-          // 編集中は常に見える（個別ON/OFFは学習モードで）
-          ctx.drawImage(r.canvas, 0, 0);
-        }
-        // 編集中のstroke
-        ctx.drawImage(strokeCanvas, 0, 0);
-      }
+  if (mode === 'study') {
+    for (const r of regions) {
+      if (!r.visible) continue;
+      ctx.drawImage(r.canvas, 0, 0, cssW, cssH);
     }
+  } else {
+    for (const r of regions) {
+      ctx.drawImage(r.canvas, 0, 0, cssW, cssH);
+    }
+    ctx.drawImage(strokeCanvas, 0, 0, cssW, cssH);
+  }
+}
 
     function getPosFromEvent(e) {
       const rect = overlay.getBoundingClientRect();
