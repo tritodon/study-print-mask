@@ -208,6 +208,27 @@
         tx.objectStore(STORE).clear();
       });
     }
+      async function compressImageFileToDataUrl(file, maxLongSide = 1600, quality = 0.75) {
+    const bitmap = await createImageBitmap(file);
+
+    const w = bitmap.width;
+    const h = bitmap.height;
+    const longSide = Math.max(w, h);
+    const scale = longSide > maxLongSide ? (maxLongSide / longSide) : 1;
+
+    const nw = Math.max(1, Math.round(w * scale));
+    const nh = Math.max(1, Math.round(h * scale));
+
+    const c = document.createElement('canvas');
+    c.width = nw;
+    c.height = nh;
+
+    const cctx = c.getContext('2d', { alpha: false });
+    cctx.drawImage(bitmap, 0, 0, nw, nh);
+
+    // JPEGで返す（容量が大きく減る）
+    return c.toDataURL('image/jpeg', quality);
+  }
 
     /* =========================
        App State
@@ -811,9 +832,14 @@
       const file = input.files[0];
       if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        current.imageDataUrl = reader.result; // store as dataURL
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (!file) return;
+
+        // 圧縮して dataURL を作る
+        const compressed = await compressImageFileToDataUrl(file, 1600, 0.75);
+
+        current.imageDataUrl = compressed;
         current.regions = [];
         regionImageCache.clear();
         nextRegionId = 1;
@@ -831,8 +857,8 @@
           updateEditorUI();
           redrawOverlay();
         };
-      };
-      reader.readAsDataURL(file);
+      });
+
     });
 
     /* =========================
