@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>学習プリント隠し</title>
+  <script src="https://kit.fontawesome.com/978dc0208c.js" crossorigin="anonymous"></script>
   <style>
     body {
       font-family: system-ui, sans-serif;
@@ -22,6 +23,11 @@
       flex-wrap: wrap;
       align-items: center;
       margin: 12px 0;
+    }
+
+    .rowChild {
+      display: flex;
+      gap: 8px;
     }
 
     button {
@@ -108,13 +114,13 @@
 </head>
 <body>
   <div class="container">
-    <h1>学習プリント隠し</h1>
     <!-- ===== LIST VIEW ===== -->
     <section id="listView" class="view active">
+      <h1>学習プリント隠し✏</h1>
       <div class="row">
         <button id="newBtn" type="button">＋ 新規プリント</button>
-        <button id="cleanupBtn" type="button">期限切れを削除</button>
-        <button id="deleteAllBtn" type="button">全データ削除</button>
+        <button id="cleanupBtn" type="button"><i class="fa-solid fa-trash-can"></i>期限切れを削除</button>
+        <button id="deleteAllBtn" type="button"><i class="fa-solid fa-trash-can"></i>全データ削除</button>
         <span class="pill" id="storagePill">保存数: 0</span>
       </div>
       <div class="hint"> 保存は端末内（IndexedDB）です。Safari等のサイトデータ削除で消える可能性があります。<br> デフォルト期限：14日（期限切れは一覧で警告表示） </div>
@@ -123,9 +129,11 @@
     <!-- ===== EDIT VIEW ===== -->
     <section id="editView" class="view">
       <div class="row">
-        <button id="backBtn" type="button">← 一覧へ</button>
-        <input id="titleInput" type="text" placeholder="タイトル（任意）" />
-        <button id="saveBtn" type="button" disabled>保存</button>
+        <div class="rowChild">
+          <button id="backBtn" type="button">← 一覧へ</button>
+          <input id="titleInput" type="text" placeholder="タイトル（任意）" />
+          <button id="saveBtn" type="button" disabled><i class="fa-solid fa-floppy-disk"></i> 保存</button>
+        </div>
         <span class="pill" id="countPill">領域: 0</span>
         <span class="pill" id="modePill">モード: 編集</span>
         <button id="modeBtn" type="button" disabled>学習モードへ</button>
@@ -133,7 +141,9 @@
       <div class="row">
         <button id="undoBtn" type="button" disabled>Undo</button>
         <button id="redoBtn" type="button" disabled>Redo</button>
-        <button id="clearAllBtn" type="button" disabled>全削除</button>
+        <button id="clearAllBtn" type="button" disabled><i class="fa-solid fa-eraser"></i>全削除</button>
+        <button id="showAllBtn" type="button" disabled><i class="fa-solid fa-eye-slash"></i></button>
+        <button id="hideAllBtn" type="button" disabled><i class="fa-solid fa-eye"></i></button>
         <span class="pill" id="statusPill">未保存</span>
       </div>
       <div class="row">
@@ -208,27 +218,27 @@
         tx.objectStore(STORE).clear();
       });
     }
-      async function compressImageFileToDataUrl(file, maxLongSide = 1600, quality = 0.75) {
-    const bitmap = await createImageBitmap(file);
+    async function compressImageFileToDataUrl(file, maxLongSide = 1600, quality = 0.75) {
+      const bitmap = await createImageBitmap(file);
 
-    const w = bitmap.width;
-    const h = bitmap.height;
-    const longSide = Math.max(w, h);
-    const scale = longSide > maxLongSide ? (maxLongSide / longSide) : 1;
+      const w = bitmap.width;
+      const h = bitmap.height;
+      const longSide = Math.max(w, h);
+      const scale = longSide > maxLongSide ? (maxLongSide / longSide) : 1;
 
-    const nw = Math.max(1, Math.round(w * scale));
-    const nh = Math.max(1, Math.round(h * scale));
+      const nw = Math.max(1, Math.round(w * scale));
+      const nh = Math.max(1, Math.round(h * scale));
 
-    const c = document.createElement('canvas');
-    c.width = nw;
-    c.height = nh;
+      const c = document.createElement('canvas');
+      c.width = nw;
+      c.height = nh;
 
-    const cctx = c.getContext('2d', { alpha: false });
-    cctx.drawImage(bitmap, 0, 0, nw, nh);
+      const cctx = c.getContext('2d', { alpha: false });
+      cctx.drawImage(bitmap, 0, 0, nw, nh);
 
-    // JPEGで返す（容量が大きく減る）
-    return c.toDataURL('image/jpeg', quality);
-  }
+      // JPEGで返す（容量が大きく減る）
+      return c.toDataURL('image/jpeg', quality);
+    }
 
     /* =========================
        App State
@@ -284,6 +294,10 @@
     const stage = document.getElementById('stage');
     const photo = document.getElementById('photo');
     const overlay = document.getElementById('overlay');
+
+    const showAllBtn = document.getElementById('showAllBtn');
+    const hideAllBtn = document.getElementById('hideAllBtn');
+
 
     /* =========================
        View helpers
@@ -402,7 +416,36 @@
       redoBtn.disabled = redoStack.length === 0;
 
       statusPill.textContent = current.updatedAt ? '保存済み/編集可' : '未保存';
+
+      const inStudy = current.mode === 'study' && current.imageDataUrl && current.regions.length > 0;
+      showAllBtn.disabled = !inStudy;
+      hideAllBtn.disabled = !inStudy;
+
+      // ついでに編集モードでは見せない（見た目スッキリ）
+      showAllBtn.style.display = inStudy ? 'inline-block' : 'none';
+      hideAllBtn.style.display = inStudy ? 'inline-block' : 'none';
+
     }
+
+    function setAllVisible(visible) {
+      if (current.regions.length === 0) return;
+
+      // すでに全員その状態なら何もしない
+      const anyDiff = current.regions.some(r => r.visible !== visible);
+      if (!anyDiff) return;
+
+      // Undo用：全員の前状態を保存（操作単位）
+      const before = current.regions.map(r => ({ id: r.id, visible: r.visible }));
+      pushAction({ type: 'SET_ALL_VISIBLE', before, afterVisible: visible });
+
+      for (const r of current.regions) r.visible = visible;
+
+      updateEditorUI();
+      redrawOverlay();
+    }
+    showAllBtn.addEventListener('click', () => setAllVisible(true));
+    hideAllBtn.addEventListener('click', () => setAllVisible(false));
+
 
     function setupCanvasSizes() {
       const rect = photo.getBoundingClientRect();
@@ -610,337 +653,346 @@
         regionImageCache.clear();
         clearStroke();
       }
-    }
-
-    async function revertAction(action) {
-      if (action.type === 'ADD_REGION') {
-        const id = action.region.id;
-        current.regions = current.regions.filter(x => x.id !== id);
-        regionImageCache.delete(id);
-      } else if (action.type === 'TOGGLE_REGION') {
-        const r = current.regions.find(x => x.id === action.id);
-        if (r) r.visible = !r.visible;
-      } else if (action.type === 'CLEAR_ALL') {
-        current.regions = action.snapshot.regions.map(r => ({ ...r }));
-        regionImageCache.clear();
+      else if (action.type === 'SET_ALL_VISIBLE') {
         for (const r of current.regions) {
-          regionImageCache.set(r.id, await dataUrlToImage(r.dataUrl));
+          r.visible = action.afterVisible;
         }
       }
-    }
 
-    /* =========================
-       Pointer events
-    ========================= */
-    function onPointerDown(e) {
-      if (!current.imageDataUrl) return;
-
-      if (current.mode === 'study') {
-        const { x, y } = getPosFromEvent(e);
-        toggleRegionAt(x, y);
-        return;
-      }
-
-      // edit: draw
-      drawing = true;
-      overlay.setPointerCapture(e.pointerId);
-
-      const { x, y } = getPosFromEvent(e);
-      lastX = x; lastY = y;
-
-      strokeCtx.beginPath();
-      strokeCtx.moveTo(x, y);
-      strokeCtx.lineTo(x + 0.01, y + 0.01);
-      strokeCtx.stroke();
-
-      hasStroke = true;
-      redrawOverlay();
-      updateEditorUI();
-    }
-
-    function onPointerMove(e) {
-      if (!drawing || current.mode !== 'edit') return;
-
-      const { x, y } = getPosFromEvent(e);
-      strokeCtx.beginPath();
-      strokeCtx.moveTo(lastX, lastY);
-      strokeCtx.lineTo(x, y);
-      strokeCtx.stroke();
-      lastX = x; lastY = y;
-
-      redrawOverlay();
-    }
-
-    async function onPointerUp(e) {
-      if (!drawing) return;
-      drawing = false;
-      try { overlay.releasePointerCapture(e.pointerId); } catch { }
-
-      if (current.mode === 'edit' && hasStroke) {
-        await addRegionFromStroke(); // 1なぞり=1問
-      }
-    }
-
-    overlay.addEventListener('pointerdown', onPointerDown);
-    overlay.addEventListener('pointermove', onPointerMove);
-    overlay.addEventListener('pointerup', onPointerUp);
-    overlay.addEventListener('pointercancel', onPointerUp);
-
-    /* =========================
-       Save / Load
-    ========================= */
-    function newDraft() {
-      current = {
-        id: crypto.randomUUID(),
-        title: '',
-        createdAt: nowMs(),
-        updatedAt: null,
-        expiresAt: nowMs() + daysMs(TTL_DAYS),
-        imageDataUrl: null,
-        regions: [],
-        mode: 'edit'
-      };
-      undoStack = [];
-      redoStack = [];
-      regionImageCache.clear();
-      nextRegionId = 1;
-      hasStroke = false;
-      drawing = false;
-
-      stage.style.display = 'none';
-      photo.src = '';
-      input.value = '';
-      setMode('edit');
-      updateEditorUI();
-    }
-
-    async function openPrint(p) {
-      // load into editor
-      current = JSON.parse(JSON.stringify(p)); // deep copy
-      current.mode = 'edit';
-
-      undoStack = [];
-      redoStack = [];
-      regionImageCache.clear();
-      hasStroke = false;
-      drawing = false;
-
-      // restore nextRegionId
-      const ids = current.regions.map(r => parseInt(r.id, 10)).filter(n => Number.isFinite(n));
-      nextRegionId = ids.length ? (Math.max(...ids) + 1) : 1;
-
-      showEdit();
-      titleInput.value = current.title || '';
-
-      // set image
-      photo.src = current.imageDataUrl;
-      stage.style.display = 'block';
-
-      photo.onload = async () => {
-        setupCanvasSizes();
-        clearStroke();
-
-        for (const r of current.regions) {
-          try {
+      async function revertAction(action) {
+        if (action.type === 'ADD_REGION') {
+          const id = action.region.id;
+          current.regions = current.regions.filter(x => x.id !== id);
+          regionImageCache.delete(id);
+        } else if (action.type === 'TOGGLE_REGION') {
+          const r = current.regions.find(x => x.id === action.id);
+          if (r) r.visible = !r.visible;
+        } else if (action.type === 'CLEAR_ALL') {
+          current.regions = action.snapshot.regions.map(r => ({ ...r }));
+          regionImageCache.clear();
+          for (const r of current.regions) {
             regionImageCache.set(r.id, await dataUrlToImage(r.dataUrl));
-          } catch { }
+          }
+        } else if (action.type === 'SET_ALL_VISIBLE') {
+          for (const s of action.before) {
+            const r = current.regions.find(x => x.id === s.id);
+            if (r) r.visible = s.visible;
+          }
         }
+      }
+
+      /* =========================
+         Pointer events
+      ========================= */
+      function onPointerDown(e) {
+        if (!current.imageDataUrl) return;
+
+        if (current.mode === 'study') {
+          const { x, y } = getPosFromEvent(e);
+          toggleRegionAt(x, y);
+          return;
+        }
+
+        // edit: draw
+        drawing = true;
+        overlay.setPointerCapture(e.pointerId);
+
+        const { x, y } = getPosFromEvent(e);
+        lastX = x; lastY = y;
+
+        strokeCtx.beginPath();
+        strokeCtx.moveTo(x, y);
+        strokeCtx.lineTo(x + 0.01, y + 0.01);
+        strokeCtx.stroke();
+
+        hasStroke = true;
+        redrawOverlay();
+        updateEditorUI();
+      }
+
+      function onPointerMove(e) {
+        if (!drawing || current.mode !== 'edit') return;
+
+        const { x, y } = getPosFromEvent(e);
+        strokeCtx.beginPath();
+        strokeCtx.moveTo(lastX, lastY);
+        strokeCtx.lineTo(x, y);
+        strokeCtx.stroke();
+        lastX = x; lastY = y;
+
+        redrawOverlay();
+      }
+
+      async function onPointerUp(e) {
+        if (!drawing) return;
+        drawing = false;
+        try { overlay.releasePointerCapture(e.pointerId); } catch { }
+
+        if (current.mode === 'edit' && hasStroke) {
+          await addRegionFromStroke(); // 1なぞり=1問
+        }
+      }
+
+      overlay.addEventListener('pointerdown', onPointerDown);
+      overlay.addEventListener('pointermove', onPointerMove);
+      overlay.addEventListener('pointerup', onPointerUp);
+      overlay.addEventListener('pointercancel', onPointerUp);
+
+      /* =========================
+         Save / Load
+      ========================= */
+      function newDraft() {
+        current = {
+          id: crypto.randomUUID(),
+          title: '',
+          createdAt: nowMs(),
+          updatedAt: null,
+          expiresAt: nowMs() + daysMs(TTL_DAYS),
+          imageDataUrl: null,
+          regions: [],
+          mode: 'edit'
+        };
+        undoStack = [];
+        redoStack = [];
+        regionImageCache.clear();
+        nextRegionId = 1;
+        hasStroke = false;
+        drawing = false;
+
+        stage.style.display = 'none';
+        photo.src = '';
+        input.value = '';
         setMode('edit');
         updateEditorUI();
-        redrawOverlay();
-      };
-    }
-
-    async function saveCurrent() {
-      if (!current.imageDataUrl) return;
-      current.title = titleInput.value || '';
-      current.updatedAt = nowMs();
-      // expiry can be refreshed on save if you want:
-      // current.expiresAt = nowMs() + daysMs(TTL_DAYS);
-
-      await dbPut(current);
-      statusPill.textContent = '保存済み';
-    }
-
-    async function cleanupExpired(deleteNow = false) {
-      const all = await dbGetAll();
-      const expired = all.filter(isExpired);
-      if (expired.length === 0) return 0;
-
-      if (!deleteNow) return expired.length;
-
-      for (const p of expired) {
-        await dbDelete(p.id);
       }
-      return expired.length;
-    }
 
-    /* =========================
-       Buttons wiring
-    ========================= */
-    newBtn.addEventListener('click', () => {
-      newDraft();
-      showEdit();
-    });
+      async function openPrint(p) {
+        // load into editor
+        current = JSON.parse(JSON.stringify(p)); // deep copy
+        current.mode = 'edit';
 
-    cleanupBtn.addEventListener('click', async () => {
-      const n = await cleanupExpired(true);
-      await refreshList();
-      alert(n ? `期限切れ ${n} 件を削除しました` : '期限切れはありません');
-    });
+        undoStack = [];
+        redoStack = [];
+        regionImageCache.clear();
+        hasStroke = false;
+        drawing = false;
 
-    deleteAllBtn.addEventListener('click', async () => {
-      if (!confirm('全データを削除します。よろしいですか？')) return;
-      await dbClear();
-      await refreshList();
-    });
+        // restore nextRegionId
+        const ids = current.regions.map(r => parseInt(r.id, 10)).filter(n => Number.isFinite(n));
+        nextRegionId = ids.length ? (Math.max(...ids) + 1) : 1;
 
-    backBtn.addEventListener('click', async () => {
-      showList();
-      await refreshList();
-    });
+        showEdit();
+        titleInput.value = current.title || '';
 
-    saveBtn.addEventListener('click', async () => {
-      await saveCurrent();
-      await refreshList();
-      updateEditorUI();
-    });
+        // set image
+        photo.src = current.imageDataUrl;
+        stage.style.display = 'block';
 
-    modeBtn.addEventListener('click', () => {
-      setMode(current.mode === 'edit' ? 'study' : 'edit');
-      updateEditorUI();
-    });
+        photo.onload = async () => {
+          setupCanvasSizes();
+          clearStroke();
 
-    clearAllBtn.addEventListener('click', () => {
-      removeAllRegions();
-    });
+          for (const r of current.regions) {
+            try {
+              regionImageCache.set(r.id, await dataUrlToImage(r.dataUrl));
+            } catch { }
+          }
+          setMode('edit');
+          updateEditorUI();
+          redrawOverlay();
+        };
+      }
 
-    undoBtn.addEventListener('click', async () => {
-      await applyUndo();
-    });
-    redoBtn.addEventListener('click', async () => {
-      await applyRedo();
-    });
+      async function saveCurrent() {
+        if (!current.imageDataUrl) return;
+        current.title = titleInput.value || '';
+        current.updatedAt = nowMs();
+        // expiry can be refreshed on save if you want:
+        // current.expiresAt = nowMs() + daysMs(TTL_DAYS);
 
-    titleInput.addEventListener('input', () => {
-      current.title = titleInput.value || '';
-      updateEditorUI();
-    });
+        await dbPut(current);
+        statusPill.textContent = '保存済み';
+      }
 
-    // image input: new base image
-  input.addEventListener('change', async () => {
-    const file = input.files[0];
-    if (!file) return;
+      async function cleanupExpired(deleteNow = false) {
+        const all = await dbGetAll();
+        const expired = all.filter(isExpired);
+        if (expired.length === 0) return 0;
 
-    statusPill.textContent = '画像を処理中…';
-    saveBtn.disabled = true;
+        if (!deleteNow) return expired.length;
 
-    try {
-      // 圧縮してdataURL生成（安全版）
-      const compressed = await compressImageFileToDataUrlSafe(file, 1600, 0.75);
-      current.imageDataUrl = compressed;
-    } catch (e) {
-      // 最悪：圧縮に失敗したら非圧縮で表示（止めない）
-      console.warn('compress failed, fallback to raw', e);
-      current.imageDataUrl = await fileToDataUrl(file);
-    }
+        for (const p of expired) {
+          await dbDelete(p.id);
+        }
+        return expired.length;
+      }
 
-    // 編集状態初期化
-    current.regions = [];
-    regionImageCache.clear();
-    nextRegionId = 1;
-    undoStack = [];
-    redoStack = [];
-    hasStroke = false;
+      /* =========================
+         Buttons wiring
+      ========================= */
+      newBtn.addEventListener('click', () => {
+        newDraft();
+        showEdit();
+      });
 
-    photo.src = current.imageDataUrl;
-    stage.style.display = 'block';
+      cleanupBtn.addEventListener('click', async () => {
+        const n = await cleanupExpired(true);
+        await refreshList();
+        alert(n ? `期限切れ ${n} 件を削除しました` : '期限切れはありません');
+      });
 
-    photo.onload = () => {
-      setupCanvasSizes();
-      clearStroke();
-      setMode('edit');
-      statusPill.textContent = '未保存';
-      saveBtn.disabled = false;
-      updateEditorUI();
-      redrawOverlay();
-    };
+      deleteAllBtn.addEventListener('click', async () => {
+        if (!confirm('全データを削除します。よろしいですか？')) return;
+        await dbClear();
+        await refreshList();
+      });
 
-    photo.onerror = () => {
-      statusPill.textContent = '画像の表示に失敗';
-      console.error('photo load failed');
-    };
-  });
+      backBtn.addEventListener('click', async () => {
+        showList();
+        await refreshList();
+      });
+
+      saveBtn.addEventListener('click', async () => {
+        await saveCurrent();
+        await refreshList();
+        updateEditorUI();
+      });
+
+      modeBtn.addEventListener('click', () => {
+        setMode(current.mode === 'edit' ? 'study' : 'edit');
+        updateEditorUI();
+      });
+
+      clearAllBtn.addEventListener('click', () => {
+        removeAllRegions();
+      });
+
+      undoBtn.addEventListener('click', async () => {
+        await applyUndo();
+      });
+      redoBtn.addEventListener('click', async () => {
+        await applyRedo();
+      });
+
+      titleInput.addEventListener('input', () => {
+        current.title = titleInput.value || '';
+        updateEditorUI();
+      });
+
+      // image input: new base image
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (!file) return;
+
+        statusPill.textContent = '画像を処理中…';
+        saveBtn.disabled = true;
+
+        try {
+          // 圧縮してdataURL生成（安全版）
+          const compressed = await compressImageFileToDataUrlSafe(file, 1600, 0.75);
+          current.imageDataUrl = compressed;
+        } catch (e) {
+          // 最悪：圧縮に失敗したら非圧縮で表示（止めない）
+          console.warn('compress failed, fallback to raw', e);
+          current.imageDataUrl = await fileToDataUrl(file);
+        }
+
+        // 編集状態初期化
+        current.regions = [];
+        regionImageCache.clear();
+        nextRegionId = 1;
+        undoStack = [];
+        redoStack = [];
+        hasStroke = false;
+
+        photo.src = current.imageDataUrl;
+        stage.style.display = 'block';
+
+        photo.onload = () => {
+          setupCanvasSizes();
+          clearStroke();
+          setMode('edit');
+          statusPill.textContent = '未保存';
+          saveBtn.disabled = false;
+          updateEditorUI();
+          redrawOverlay();
+        };
+
+        photo.onerror = () => {
+          statusPill.textContent = '画像の表示に失敗';
+          console.error('photo load failed');
+        };
+      });
 
       /* =========================
          FileUpload
       ========================= */
 
-  function fileToDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(r.result);
-      r.onerror = () => reject(r.error || new Error('FileReader failed'));
-      r.readAsDataURL(file);
-    });
-  }
+      function fileToDataUrl(file) {
+        return new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(r.error || new Error('FileReader failed'));
+          r.readAsDataURL(file);
+        });
+      }
 
-  function dataUrlToImageEl(dataUrl) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Image load failed'));
-      img.src = dataUrl;
-    });
-  }
+      function dataUrlToImageEl(dataUrl) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('Image load failed'));
+          img.src = dataUrl;
+        });
+      }
 
-  async function compressImageFileToDataUrlSafe(file, maxLongSide = 1600, quality = 0.75) {
-    // 1) createImageBitmap ルート（速い）
-    try {
-      const bitmap = await createImageBitmap(file);
+      async function compressImageFileToDataUrlSafe(file, maxLongSide = 1600, quality = 0.75) {
+        // 1) createImageBitmap ルート（速い）
+        try {
+          const bitmap = await createImageBitmap(file);
 
-      const w = bitmap.width, h = bitmap.height;
-      const longSide = Math.max(w, h);
-      const scale = longSide > maxLongSide ? (maxLongSide / longSide) : 1;
+          const w = bitmap.width, h = bitmap.height;
+          const longSide = Math.max(w, h);
+          const scale = longSide > maxLongSide ? (maxLongSide / longSide) : 1;
 
-      const nw = Math.max(1, Math.round(w * scale));
-      const nh = Math.max(1, Math.round(h * scale));
+          const nw = Math.max(1, Math.round(w * scale));
+          const nh = Math.max(1, Math.round(h * scale));
 
-      const c = document.createElement('canvas');
-      c.width = nw; c.height = nh;
-      const cctx = c.getContext('2d', { alpha: false });
-      cctx.drawImage(bitmap, 0, 0, nw, nh);
+          const c = document.createElement('canvas');
+          c.width = nw; c.height = nh;
+          const cctx = c.getContext('2d', { alpha: false });
+          cctx.drawImage(bitmap, 0, 0, nw, nh);
 
-      return c.toDataURL('image/jpeg', quality);
-    } catch (e) {
-      // 2) FileReader → Image → Canvas ルート（互換性高い）
-      const src = await fileToDataUrl(file);
-      const img = await dataUrlToImageEl(src);
+          return c.toDataURL('image/jpeg', quality);
+        } catch (e) {
+          // 2) FileReader → Image → Canvas ルート（互換性高い）
+          const src = await fileToDataUrl(file);
+          const img = await dataUrlToImageEl(src);
 
-      const w = img.naturalWidth, h = img.naturalHeight;
-      const longSide = Math.max(w, h);
-      const scale = longSide > maxLongSide ? (maxLongSide / longSide) : 1;
+          const w = img.naturalWidth, h = img.naturalHeight;
+          const longSide = Math.max(w, h);
+          const scale = longSide > maxLongSide ? (maxLongSide / longSide) : 1;
 
-      const nw = Math.max(1, Math.round(w * scale));
-      const nh = Math.max(1, Math.round(h * scale));
+          const nw = Math.max(1, Math.round(w * scale));
+          const nh = Math.max(1, Math.round(h * scale));
 
-      const c = document.createElement('canvas');
-      c.width = nw; c.height = nh;
-      const cctx = c.getContext('2d', { alpha: false });
-      cctx.drawImage(img, 0, 0, nw, nh);
+          const c = document.createElement('canvas');
+          c.width = nw; c.height = nh;
+          const cctx = c.getContext('2d', { alpha: false });
+          cctx.drawImage(img, 0, 0, nw, nh);
 
-      return c.toDataURL('image/jpeg', quality);
-    }
-  }
+          return c.toDataURL('image/jpeg', quality);
+        }
+      }
 
 
 
-    /* =========================
-       Init
-    ========================= */
-    (async function init() {
-      await refreshList();
-    })();
+      /* =========================
+         Init
+      ========================= */
+      (async function init() {
+        await refreshList();
+      })();
   </script>
 </body>
 </html>
