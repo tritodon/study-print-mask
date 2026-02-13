@@ -12,7 +12,7 @@
     }
 
     .container {
-      max-width: 800px;
+      max-width: 900px;
       margin: auto;
     }
 
@@ -28,10 +28,23 @@
       padding: 8px 12px;
     }
 
+    input[type="text"] {
+      padding: 8px;
+      min-width: 220px;
+    }
+
     .hint {
       font-size: 12px;
       opacity: .75;
-      margin-bottom: 8px;
+      margin: 8px 0;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid #ccc;
+      font-size: 12px;
     }
 
     .stage {
@@ -56,90 +69,319 @@
       display: block;
     }
 
-    .pill {
-      display: inline-block;
-      padding: 3px 8px;
-      border-radius: 999px;
-      border: 1px solid #ccc;
+    .view {
+      display: none;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    .list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 16px;
+    }
+
+    .meta {
       font-size: 12px;
+      opacity: .75;
+    }
+
+    .danger {
+      border-color: #f0c0c0;
+      background: #fff7f7;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>学習プリント隠し</h1>
-    <div class="row">
-      <input type="file" accept="image/*" capture="environment" id="imageInput" />
-    </div>
-    <div class="row">
-      <button id="commitBtn" type="button" disabled>この白塗りを1問にする（確定）</button>
-      <button id="clearStrokeBtn" type="button" disabled>いま描いた白塗りを消す</button>
-      <button id="clearAllBtn" type="button" disabled>全て削除</button>
-      <span class="pill" id="countPill">領域: 0</span>
-      <span class="pill" id="modePill">モード: 編集</span>
-      <button id="modeBtn" type="button" disabled>学習モードへ</button>
-    </div>
-    <div class="hint"> 編集モード：指でなぞって白塗り →「確定」すると1領域になります。<br> 学習モード：領域をタップすると、その領域だけ表示/非表示が切り替わります。 </div>
-    <div class="stage" id="stage" style="display:none;">
-      <img id="photo" alt="" />
-      <canvas id="overlay"></canvas>
-    </div>
+    <!-- ===== LIST VIEW ===== -->
+    <section id="listView" class="view active">
+      <div class="row">
+        <button id="newBtn" type="button">＋ 新規プリント</button>
+        <button id="cleanupBtn" type="button">期限切れを削除</button>
+        <button id="deleteAllBtn" type="button">全データ削除</button>
+        <span class="pill" id="storagePill">保存数: 0</span>
+      </div>
+      <div class="hint"> 保存は端末内（IndexedDB）です。Safari等のサイトデータ削除で消える可能性があります。<br> デフォルト期限：14日（期限切れは一覧で警告表示） </div>
+      <div id="list" class="list"></div>
+    </section>
+    <!-- ===== EDIT VIEW ===== -->
+    <section id="editView" class="view">
+      <div class="row">
+        <button id="backBtn" type="button">← 一覧へ</button>
+        <input id="titleInput" type="text" placeholder="タイトル（任意）" />
+        <button id="saveBtn" type="button" disabled>保存</button>
+        <span class="pill" id="countPill">領域: 0</span>
+        <span class="pill" id="modePill">モード: 編集</span>
+        <button id="modeBtn" type="button" disabled>学習モードへ</button>
+      </div>
+      <div class="row">
+        <button id="undoBtn" type="button" disabled>Undo</button>
+        <button id="redoBtn" type="button" disabled>Redo</button>
+        <button id="clearAllBtn" type="button" disabled>全削除</button>
+        <span class="pill" id="statusPill">未保存</span>
+      </div>
+      <div class="row">
+        <input type="file" accept="image/*" capture="environment" id="imageInput" />
+        <span class="hint">編集モード：1なぞり=1問（自動確定）／学習モード：領域タップで表示/非表示</span>
+      </div>
+      <div class="stage" id="stage" style="display:none;">
+        <img id="photo" alt="" />
+        <canvas id="overlay"></canvas>
+      </div>
+    </section>
   </div>
   <script>
+    /* =========================
+       IndexedDB (no library)
+    ========================= */
+    const DB_NAME = 'printmask-db';
+    const DB_VER = 1;
+    const STORE = 'prints';
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VER);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(STORE)) {
+            db.createObjectStore(STORE, { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbGetAll() {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readonly');
+        const st = tx.objectStore(STORE);
+        const req = st.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbPut(item) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
+        tx.objectStore(STORE).put(item);
+      });
+    }
+
+    async function dbDelete(id) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
+        tx.objectStore(STORE).delete(id);
+      });
+    }
+
+    async function dbClear() {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
+        tx.objectStore(STORE).clear();
+      });
+    }
+
+    /* =========================
+       App State
+    ========================= */
+    const TTL_DAYS = 14;
+    const nowMs = () => Date.now();
+    const daysMs = (d) => d * 24 * 60 * 60 * 1000;
+
+    let printsCache = []; // list view cache
+
+    // current editing item
+    let current = {
+      id: null,
+      title: '',
+      createdAt: null,
+      updatedAt: null,
+      expiresAt: null,
+      imageDataUrl: null,    // base image (dataURL)
+      regions: [],           // [{id, visible, dataUrl}]
+      mode: 'edit'
+    };
+
+    // undo/redo stacks for current edit session
+    let undoStack = [];
+    let redoStack = [];
+
+    /* =========================
+       UI refs
+    ========================= */
+    const listView = document.getElementById('listView');
+    const editView = document.getElementById('editView');
+    const listEl = document.getElementById('list');
+    const storagePill = document.getElementById('storagePill');
+
+    const newBtn = document.getElementById('newBtn');
+    const cleanupBtn = document.getElementById('cleanupBtn');
+    const deleteAllBtn = document.getElementById('deleteAllBtn');
+
+    const backBtn = document.getElementById('backBtn');
+    const titleInput = document.getElementById('titleInput');
+    const saveBtn = document.getElementById('saveBtn');
+    const statusPill = document.getElementById('statusPill');
+
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+
+    const countPill = document.getElementById('countPill');
+    const modePill = document.getElementById('modePill');
+    const modeBtn = document.getElementById('modeBtn');
+
     const input = document.getElementById('imageInput');
     const stage = document.getElementById('stage');
     const photo = document.getElementById('photo');
     const overlay = document.getElementById('overlay');
 
-    const commitBtn = document.getElementById('commitBtn');
-    const clearStrokeBtn = document.getElementById('clearStrokeBtn');
-    const clearAllBtn = document.getElementById('clearAllBtn');
-    const modeBtn = document.getElementById('modeBtn');
-    const countPill = document.getElementById('countPill');
-    const modePill = document.getElementById('modePill');
+    /* =========================
+       View helpers
+    ========================= */
+    function showList() {
+      listView.classList.add('active');
+      editView.classList.remove('active');
+    }
+    function showEdit() {
+      listView.classList.remove('active');
+      editView.classList.add('active');
+    }
+    function fmtDate(ms) {
+      const d = new Date(ms);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    function isExpired(p) {
+      return p.expiresAt && p.expiresAt <= nowMs();
+    }
 
-    // ---- 設定 ----
-    const BRUSH_SIZE = 18;
+    /* =========================
+       List rendering
+    ========================= */
+    async function refreshList() {
+      printsCache = await dbGetAll();
+      printsCache.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
-    // ---- 状態 ----
+      storagePill.textContent = `保存数: ${printsCache.length}`;
+      listEl.innerHTML = '';
+
+      if (printsCache.length === 0) {
+        listEl.innerHTML = `<div class="hint">まだ保存されたプリントがありません。「＋ 新規プリント」から作成してください。</div>`;
+        return;
+      }
+
+      for (const p of printsCache) {
+        const expired = isExpired(p);
+        const card = document.createElement('div');
+        card.className = 'card' + (expired ? ' danger' : '');
+
+        const title = (p.title && p.title.trim()) ? p.title.trim() : '(無題)';
+        const regionCount = Array.isArray(p.regions) ? p.regions.length : 0;
+
+        card.innerHTML = `
+      <h3>${escapeHtml(title)}</h3>
+      <div class="meta">
+        更新: ${fmtDate(p.updatedAt || p.createdAt)} / 領域: ${regionCount}
+        ${p.expiresAt ? ` / 期限: ${fmtDate(p.expiresAt)}` : ''}
+        ${expired ? ' / ⚠ 期限切れ' : ''}
+      </div>
+      <div class="row">
+        <button type="button" data-open="${p.id}">開く</button>
+        <button type="button" data-del="${p.id}">削除</button>
+      </div>
+    `;
+        listEl.appendChild(card);
+      }
+
+      listEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const openId = btn.getAttribute('data-open');
+        const delId = btn.getAttribute('data-del');
+
+        if (openId) {
+          const p = printsCache.find(x => x.id === openId);
+          if (p) await openPrint(p);
+        }
+        if (delId) {
+          await dbDelete(delId);
+          await refreshList();
+        }
+      }, { once: true });
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (m) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[m]));
+    }
+
+    /* =========================
+       Editor: canvas / regions
+    ========================= */
     let ctx = null;
     let dpr = window.devicePixelRatio || 1;
+    let cssW = 0, cssH = 0;
 
-    let mode = 'edit'; // 'edit' | 'study'
     let drawing = false;
     let hasStroke = false;
     let lastX = 0, lastY = 0;
-    let cssW = 0, cssH = 0;
 
-    // 「いま描いている」ストローク用のオフスクリーンCanvas
+    const BRUSH_SIZE = 12;
+
     let strokeCanvas = document.createElement('canvas');
     let strokeCtx = strokeCanvas.getContext('2d', { willReadFrequently: true });
 
-    // 確定した領域の配列
-    // region = { id, canvas, ctx, visible }
-    const regions = [];
-    let nextId = 1;
+    let nextRegionId = 1;
 
     function setMode(newMode) {
-      mode = newMode;
-      modePill.textContent = 'モード: ' + (mode === 'edit' ? '編集' : '学習');
-      modeBtn.textContent = (mode === 'edit') ? '学習モードへ' : '編集モードへ';
-
-      // 編集モードだけ描ける
-      commitBtn.disabled = (mode !== 'edit') || !hasStroke;
-      clearStrokeBtn.disabled = (mode !== 'edit') || !hasStroke;
-
+      current.mode = newMode;
+      modePill.textContent = 'モード: ' + (newMode === 'edit' ? '編集' : '学習');
+      modeBtn.textContent = (newMode === 'edit') ? '学習モードへ' : '編集モードへ';
       redrawOverlay();
     }
 
-    function updateUI() {
-      countPill.textContent = '領域: ' + regions.length;
-      clearAllBtn.disabled = regions.length === 0 && !hasStroke;
-      modeBtn.disabled = (stage.style.display === 'none');
-      commitBtn.disabled = (mode !== 'edit') || !hasStroke;
-      clearStrokeBtn.disabled = (mode !== 'edit') || !hasStroke;
-    }
+    function updateEditorUI() {
+      countPill.textContent = `領域: ${current.regions.length}`;
+      modeBtn.disabled = !current.imageDataUrl;
+      clearAllBtn.disabled = !current.imageDataUrl || (current.regions.length === 0 && !hasStroke);
+      saveBtn.disabled = !current.imageDataUrl;
+      titleInput.value = current.title || '';
 
+      undoBtn.disabled = undoStack.length === 0;
+      redoBtn.disabled = redoStack.length === 0;
+
+      statusPill.textContent = current.updatedAt ? '保存済み/編集可' : '未保存';
+    }
 
     function setupCanvasSizes() {
       const rect = photo.getBoundingClientRect();
@@ -147,8 +389,6 @@
       cssH = Math.max(1, Math.round(rect.height));
 
       dpr = window.devicePixelRatio || 1;
-
-      // 表示用 overlay
 
       overlay.style.width = cssW + 'px';
       overlay.style.height = cssH + 'px';
@@ -158,83 +398,95 @@
       ctx = overlay.getContext('2d', { willReadFrequently: true });
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // stroke（編集中の1領域）
       strokeCanvas.width = Math.round(cssW * dpr);
       strokeCanvas.height = Math.round(cssH * dpr);
-
       strokeCtx = strokeCanvas.getContext('2d', { willReadFrequently: true });
       strokeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // ブラシ共通設定
       [ctx, strokeCtx].forEach(c => {
         c.lineCap = 'round';
         c.lineJoin = 'round';
         c.strokeStyle = '#fff';
         c.lineWidth = BRUSH_SIZE;
       });
-
-      // 既存領域Canvasも同サイズで作っているので、ここでリサイズすると消えます。
-      // MVPは「回転/リサイズしたら描き直し」で割り切り。
     }
 
     function clearStroke() {
-      if (!strokeCtx) return;
       strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
       hasStroke = false;
-      updateUI();
-      redrawOverlay();
     }
 
-    function clearAll() {
-      regions.length = 0;
+    function redrawOverlay() {
+      if (!ctx) return;
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+      if (current.mode === 'study') {
+        for (const r of current.regions) {
+          if (!r.visible) continue;
+          // r.canvas is stored as dataUrl -> draw as image (async) would be heavy
+          // We'll keep an in-memory cache of images for current session.
+          const img = regionImageCache.get(r.id);
+          if (img) ctx.drawImage(img, 0, 0, cssW, cssH);
+        }
+      } else {
+        for (const r of current.regions) {
+          const img = regionImageCache.get(r.id);
+          if (img) ctx.drawImage(img, 0, 0, cssW, cssH);
+        }
+        ctx.drawImage(strokeCanvas, 0, 0, cssW, cssH);
+      }
+    }
+
+    // region id -> HTMLImageElement
+    const regionImageCache = new Map();
+
+    async function addRegionFromStroke() {
+      if (!hasStroke) return;
+
+      // strokeCanvas -> dataURL (png)
+      const dataUrl = strokeCanvas.toDataURL('image/png');
+
+      const id = String(nextRegionId++);
+      const region = { id, visible: true, dataUrl };
+
+      // cache image for fast redraw
+      const img = await dataUrlToImage(dataUrl);
+      regionImageCache.set(id, img);
+
+      // push action for undo
+      pushAction({ type: 'ADD_REGION', region });
+
+      current.regions.push(region);
+
       clearStroke();
-      nextId = 1;
-      updateUI();
+      updateEditorUI();
       redrawOverlay();
     }
 
-  function commitStrokeAsRegion() {
-    if (!hasStroke) return;
+    function removeAllRegions() {
+      if (current.regions.length === 0 && !hasStroke) return;
 
-    const c = document.createElement('canvas');
-    c.width = strokeCanvas.width;   // device pixel
-    c.height = strokeCanvas.height; // device pixel
+      const snapshot = {
+        regions: current.regions.map(r => ({ ...r })),
+      };
+      pushAction({ type: 'CLEAR_ALL', snapshot });
 
-    const cctx = c.getContext('2d', { willReadFrequently: true });
-
-    // ★ここ重要：transformはかけない（identityのままピクセルコピー）
-    cctx.setTransform(1, 0, 0, 1, 0, 0);
-    cctx.drawImage(strokeCanvas, 0, 0);
-
-    regions.push({
-      id: nextId++,
-      canvas: c,
-      ctx: cctx,
-      visible: true
-    });
-
-    clearStroke();
-    updateUI();
-    redrawOverlay();
-  }
-
-  function redrawOverlay() {
-    if (!ctx) return;
-    ctx.clearRect(0, 0, overlay.width, overlay.height);
-
-    if (mode === 'study') {
-      for (const r of regions) {
-        if (!r.visible) continue;
-        ctx.drawImage(r.canvas, 0, 0, cssW, cssH);
-      }
-    } else {
-      for (const r of regions) {
-        ctx.drawImage(r.canvas, 0, 0, cssW, cssH);
-      }
-      ctx.drawImage(strokeCanvas, 0, 0, cssW, cssH);
+      current.regions = [];
+      regionImageCache.clear();
+      clearStroke();
+      updateEditorUI();
+      redrawOverlay();
     }
-  }
 
+    function toggleRegionAt(x, y) {
+      const r = findRegionAt(x, y);
+      if (!r) return;
+      pushAction({ type: 'TOGGLE_REGION', id: r.id });
+
+      r.visible = !r.visible;
+      updateEditorUI();
+      redrawOverlay();
+    }
 
     function getPosFromEvent(e) {
       const rect = overlay.getBoundingClientRect();
@@ -243,38 +495,132 @@
       return { x, y };
     }
 
-    // タップ位置に「塗り」がある領域を上から探す（最後に作った領域優先）
     function findRegionAt(x, y) {
-      // x,y はCSS px
-      // regionsのcanvasはdpr適用済みのサイズなので、ピクセル参照はdprを掛ける
+      // hit test by pixel alpha of cached region image (draw into temp 1x1)
+      // Simple but reliable for MVP.
+
+      // Convert x,y CSS -> device pixel
       const px = Math.round(x * dpr);
       const py = Math.round(y * dpr);
 
-      for (let i = regions.length - 1; i >= 0; i--) {
-        const r = regions[i];
-        const img = r.ctx.getImageData(px, py, 1, 1).data;
-        // alphaが0以外ならその領域に当たってる（白塗りの部分）
-        if (img[3] !== 0) return r;
+      // sample radius for easier tapping
+      const R = 4; // px in device pixels
+      const samples = [
+        [0, 0], [R, 0], [-R, 0], [0, R], [0, -R], [R, R], [-R, R], [R, -R], [-R, -R]
+      ];
+
+      // Create tiny canvas once
+      if (!findRegionAt._c) {
+        findRegionAt._c = document.createElement('canvas');
+        findRegionAt._c.width = 1;
+        findRegionAt._c.height = 1;
+        findRegionAt._ctx = findRegionAt._c.getContext('2d', { willReadFrequently: true });
+      }
+      const tctx = findRegionAt._ctx;
+
+      // topmost = last region
+      for (let i = current.regions.length - 1; i >= 0; i--) {
+        const r = current.regions[i];
+        const img = regionImageCache.get(r.id);
+        if (!img) continue;
+
+        for (const [dx, dy] of samples) {
+          const sx = px + dx;
+          const sy = py + dy;
+          if (sx < 0 || sy < 0 || sx >= overlay.width || sy >= overlay.height) continue;
+
+          tctx.clearRect(0, 0, 1, 1);
+          // draw a 1x1 pixel crop
+          // drawImage(img, sx,sy,1,1, 0,0,1,1) uses source coords in image pixels (device px)
+          tctx.drawImage(img, sx, sy, 1, 1, 0, 0, 1, 1);
+          const a = tctx.getImageData(0, 0, 1, 1).data[3];
+          if (a !== 0) return r;
+        }
       }
       return null;
     }
 
-    // ---- 描画イベント（編集モードのみ） ----
-    function onPointerDown(e) {
-      if (stage.style.display === 'none') return;
+    function dataUrlToImage(dataUrl) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('image load failed'));
+        img.src = dataUrl;
+      });
+    }
 
-      if (mode === 'study') {
-        // 学習モードはタップで切替
-        const { x, y } = getPosFromEvent(e);
-        const r = findRegionAt(x, y);
-        if (r) {
-          r.visible = !r.visible;
-          redrawOverlay();
+    /* =========================
+       Undo/Redo (operation unit)
+    ========================= */
+    function pushAction(action) {
+      undoStack.push(action);
+      redoStack = []; // clear redo on new action
+      updateEditorUI();
+    }
+
+    async function applyUndo() {
+      const action = undoStack.pop();
+      if (!action) return;
+      await revertAction(action);
+      redoStack.push(action);
+      updateEditorUI();
+      redrawOverlay();
+    }
+
+    async function applyRedo() {
+      const action = redoStack.pop();
+      if (!action) return;
+      await applyAction(action);
+      undoStack.push(action);
+      updateEditorUI();
+      redrawOverlay();
+    }
+
+    async function applyAction(action) {
+      if (action.type === 'ADD_REGION') {
+        const r = action.region;
+        current.regions.push(r);
+        regionImageCache.set(r.id, await dataUrlToImage(r.dataUrl));
+      } else if (action.type === 'TOGGLE_REGION') {
+        const r = current.regions.find(x => x.id === action.id);
+        if (r) r.visible = !r.visible;
+      } else if (action.type === 'CLEAR_ALL') {
+        current.regions = [];
+        regionImageCache.clear();
+        clearStroke();
+      }
+    }
+
+    async function revertAction(action) {
+      if (action.type === 'ADD_REGION') {
+        const id = action.region.id;
+        current.regions = current.regions.filter(x => x.id !== id);
+        regionImageCache.delete(id);
+      } else if (action.type === 'TOGGLE_REGION') {
+        const r = current.regions.find(x => x.id === action.id);
+        if (r) r.visible = !r.visible;
+      } else if (action.type === 'CLEAR_ALL') {
+        current.regions = action.snapshot.regions.map(r => ({ ...r }));
+        regionImageCache.clear();
+        for (const r of current.regions) {
+          regionImageCache.set(r.id, await dataUrlToImage(r.dataUrl));
         }
+      }
+    }
+
+    /* =========================
+       Pointer events
+    ========================= */
+    function onPointerDown(e) {
+      if (!current.imageDataUrl) return;
+
+      if (current.mode === 'study') {
+        const { x, y } = getPosFromEvent(e);
+        toggleRegionAt(x, y);
         return;
       }
 
-      // 編集モード：描く
+      // edit: draw
       drawing = true;
       overlay.setPointerCapture(e.pointerId);
 
@@ -287,74 +633,214 @@
       strokeCtx.stroke();
 
       hasStroke = true;
-      updateUI();
       redrawOverlay();
+      updateEditorUI();
     }
 
     function onPointerMove(e) {
-      if (!drawing || mode !== 'edit') return;
-      const { x, y } = getPosFromEvent(e);
+      if (!drawing || current.mode !== 'edit') return;
 
+      const { x, y } = getPosFromEvent(e);
       strokeCtx.beginPath();
       strokeCtx.moveTo(lastX, lastY);
       strokeCtx.lineTo(x, y);
       strokeCtx.stroke();
-
       lastX = x; lastY = y;
+
       redrawOverlay();
     }
 
-  function onPointerUp(e) {
-    if (!drawing) return;
-    drawing = false;
-    try { overlay.releasePointerCapture(e.pointerId); } catch { }
+    async function onPointerUp(e) {
+      if (!drawing) return;
+      drawing = false;
+      try { overlay.releasePointerCapture(e.pointerId); } catch { }
 
-    if (mode === 'edit' && hasStroke) {
-      commitStrokeAsRegion(); // 1なぞり=1問
+      if (current.mode === 'edit' && hasStroke) {
+        await addRegionFromStroke(); // 1なぞり=1問
+      }
     }
-  }
-
 
     overlay.addEventListener('pointerdown', onPointerDown);
     overlay.addEventListener('pointermove', onPointerMove);
     overlay.addEventListener('pointerup', onPointerUp);
     overlay.addEventListener('pointercancel', onPointerUp);
 
-    // ---- ボタン ----
-    commitBtn.addEventListener('click', commitStrokeAsRegion);
-    clearStrokeBtn.addEventListener('click', clearStroke);
-    clearAllBtn.addEventListener('click', clearAll);
+    /* =========================
+       Save / Load
+    ========================= */
+    function newDraft() {
+      current = {
+        id: crypto.randomUUID(),
+        title: '',
+        createdAt: nowMs(),
+        updatedAt: null,
+        expiresAt: nowMs() + daysMs(TTL_DAYS),
+        imageDataUrl: null,
+        regions: [],
+        mode: 'edit'
+      };
+      undoStack = [];
+      redoStack = [];
+      regionImageCache.clear();
+      nextRegionId = 1;
+      hasStroke = false;
+      drawing = false;
 
-    modeBtn.addEventListener('click', () => {
-      setMode(mode === 'edit' ? 'study' : 'edit');
-      updateUI();
+      stage.style.display = 'none';
+      photo.src = '';
+      input.value = '';
+      setMode('edit');
+      updateEditorUI();
+    }
+
+    async function openPrint(p) {
+      // load into editor
+      current = JSON.parse(JSON.stringify(p)); // deep copy
+      current.mode = 'edit';
+
+      undoStack = [];
+      redoStack = [];
+      regionImageCache.clear();
+      hasStroke = false;
+      drawing = false;
+
+      // restore nextRegionId
+      const ids = current.regions.map(r => parseInt(r.id, 10)).filter(n => Number.isFinite(n));
+      nextRegionId = ids.length ? (Math.max(...ids) + 1) : 1;
+
+      showEdit();
+      titleInput.value = current.title || '';
+
+      // set image
+      photo.src = current.imageDataUrl;
+      stage.style.display = 'block';
+
+      photo.onload = async () => {
+        setupCanvasSizes();
+        clearStroke();
+
+        for (const r of current.regions) {
+          try {
+            regionImageCache.set(r.id, await dataUrlToImage(r.dataUrl));
+          } catch { }
+        }
+        setMode('edit');
+        updateEditorUI();
+        redrawOverlay();
+      };
+    }
+
+    async function saveCurrent() {
+      if (!current.imageDataUrl) return;
+      current.title = titleInput.value || '';
+      current.updatedAt = nowMs();
+      // expiry can be refreshed on save if you want:
+      // current.expiresAt = nowMs() + daysMs(TTL_DAYS);
+
+      await dbPut(current);
+      statusPill.textContent = '保存済み';
+    }
+
+    async function cleanupExpired(deleteNow = false) {
+      const all = await dbGetAll();
+      const expired = all.filter(isExpired);
+      if (expired.length === 0) return 0;
+
+      if (!deleteNow) return expired.length;
+
+      for (const p of expired) {
+        await dbDelete(p.id);
+      }
+      return expired.length;
+    }
+
+    /* =========================
+       Buttons wiring
+    ========================= */
+    newBtn.addEventListener('click', () => {
+      newDraft();
+      showEdit();
     });
 
-    // ---- 画像読み込み ----
+    cleanupBtn.addEventListener('click', async () => {
+      const n = await cleanupExpired(true);
+      await refreshList();
+      alert(n ? `期限切れ ${n} 件を削除しました` : '期限切れはありません');
+    });
+
+    deleteAllBtn.addEventListener('click', async () => {
+      if (!confirm('全データを削除します。よろしいですか？')) return;
+      await dbClear();
+      await refreshList();
+    });
+
+    backBtn.addEventListener('click', async () => {
+      showList();
+      await refreshList();
+    });
+
+    saveBtn.addEventListener('click', async () => {
+      await saveCurrent();
+      await refreshList();
+      updateEditorUI();
+    });
+
+    modeBtn.addEventListener('click', () => {
+      setMode(current.mode === 'edit' ? 'study' : 'edit');
+      updateEditorUI();
+    });
+
+    clearAllBtn.addEventListener('click', () => {
+      removeAllRegions();
+    });
+
+    undoBtn.addEventListener('click', async () => {
+      await applyUndo();
+    });
+    redoBtn.addEventListener('click', async () => {
+      await applyRedo();
+    });
+
+    titleInput.addEventListener('input', () => {
+      current.title = titleInput.value || '';
+      updateEditorUI();
+    });
+
+    // image input: new base image
     input.addEventListener('change', () => {
       const file = input.files[0];
       if (!file) return;
 
-      const url = URL.createObjectURL(file);
-      photo.src = url;
-      stage.style.display = 'block';
+      const reader = new FileReader();
+      reader.onload = () => {
+        current.imageDataUrl = reader.result; // store as dataURL
+        current.regions = [];
+        regionImageCache.clear();
+        nextRegionId = 1;
+        undoStack = [];
+        redoStack = [];
+        hasStroke = false;
 
-      // 状態初期化
-      regions.length = 0;
-      nextId = 1;
-      hasStroke = false;
-      setMode('edit');
+        photo.src = current.imageDataUrl;
+        stage.style.display = 'block';
 
-      photo.onload = () => {
-        setupCanvasSizes();
-        clearStroke();
-        updateUI();
-        redrawOverlay();
+        photo.onload = () => {
+          setupCanvasSizes();
+          clearStroke();
+          setMode('edit');
+          updateEditorUI();
+          redrawOverlay();
+        };
       };
+      reader.readAsDataURL(file);
     });
 
-    // 初期UI
-    updateUI();
+    /* =========================
+       Init
+    ========================= */
+    (async function init() {
+      await refreshList();
+    })();
   </script>
 </body>
 </html>
