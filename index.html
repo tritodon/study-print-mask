@@ -6,31 +6,34 @@
   <title>学習プリント隠し</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
-    .container { max-width: 700px; margin: auto; }
+    .container { max-width: 800px; margin: auto; }
+
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+    button { padding: 8px 12px; }
+    .hint { font-size: 12px; opacity: .75; margin-bottom: 8px; }
 
     .stage {
       position: relative;
       width: 100%;
-      touch-action: none; /* 重要：iOSで描画中のスクロール/ズームを抑える */
-    }
-    #photo {
-      width: 100%;
-      height: auto;
-      display: block;
+      touch-action: none;
       user-select: none;
       -webkit-user-drag: none;
     }
-    #mask {
+    #photo { width: 100%; height: auto; display: block; }
+    #overlay {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
       display: block;
     }
-
-    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
-    button { padding: 8px 12px; }
-    .hint { font-size: 12px; opacity: .75; }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid #ccc;
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
@@ -39,16 +42,25 @@
 
     <div class="row">
       <input type="file" accept="image/*" capture="environment" id="imageInput" />
-      <button id="clearBtn" type="button">白塗りを全消去</button>
-      <button id="toggleBtn" type="button">白塗り：表示</button>
     </div>
+
+    <div class="row">
+      <button id="commitBtn" type="button" disabled>この白塗りを1問にする（確定）</button>
+      <button id="clearStrokeBtn" type="button" disabled>いま描いた白塗りを消す</button>
+      <button id="clearAllBtn" type="button" disabled>全て削除</button>
+      <span class="pill" id="countPill">領域: 0</span>
+      <span class="pill" id="modePill">モード: 編集</span>
+      <button id="modeBtn" type="button" disabled>学習モードへ</button>
+    </div>
+
     <div class="hint">
-      画像の上を指でなぞると白塗りできます（2本指ズーム等は一旦なし）
+      編集モード：指でなぞって白塗り →「確定」すると1領域になります。<br>
+      学習モード：領域をタップすると、その領域だけ表示/非表示が切り替わります。
     </div>
 
     <div class="stage" id="stage" style="display:none;">
       <img id="photo" alt="" />
-      <canvas id="mask"></canvas>
+      <canvas id="overlay"></canvas>
     </div>
   </div>
 
@@ -56,128 +68,267 @@
     const input = document.getElementById('imageInput');
     const stage = document.getElementById('stage');
     const photo = document.getElementById('photo');
-    const canvas = document.getElementById('mask');
-    const clearBtn = document.getElementById('clearBtn');
-    const toggleBtn = document.getElementById('toggleBtn');
+    const overlay = document.getElementById('overlay');
 
-    let ctx = null;
-    let drawing = false;
-    let lastX = 0, lastY = 0;
-    let maskVisible = true;
+    const commitBtn = document.getElementById('commitBtn');
+    const clearStrokeBtn = document.getElementById('clearStrokeBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const modeBtn = document.getElementById('modeBtn');
+    const countPill = document.getElementById('countPill');
+    const modePill = document.getElementById('modePill');
 
-    // 白塗りの太さ（プリントだと少し太めが楽）
+    // ---- 設定 ----
     const BRUSH_SIZE = 26;
 
-    function fitCanvasToImage() {
-      // 表示サイズ（CSS px）
+    // ---- 状態 ----
+    let ctx = null;
+    let dpr = window.devicePixelRatio || 1;
+
+    let mode = 'edit'; // 'edit' | 'study'
+    let drawing = false;
+    let hasStroke = false;
+    let lastX = 0, lastY = 0;
+
+    // 「いま描いている」ストローク用のオフスクリーンCanvas
+    let strokeCanvas = document.createElement('canvas');
+    let strokeCtx = strokeCanvas.getContext('2d', { willReadFrequently: true });
+
+    // 確定した領域の配列
+    // region = { id, canvas, ctx, visible }
+    const regions = [];
+    let nextId = 1;
+
+    function setMode(newMode) {
+      mode = newMode;
+      modePill.textContent = 'モード: ' + (mode === 'edit' ? '編集' : '学習');
+      modeBtn.textContent = (mode === 'edit') ? '学習モードへ' : '編集モードへ';
+
+      // 編集モードだけ描ける
+      commitBtn.disabled = (mode !== 'edit') || !hasStroke;
+      clearStrokeBtn.disabled = (mode !== 'edit') || !hasStroke;
+
+      redrawOverlay();
+    }
+
+    function updateUI() {
+      countPill.textContent = '領域: ' + regions.length;
+      clearAllBtn.disabled = regions.length === 0 && !hasStroke;
+      modeBtn.disabled = (stage.style.display === 'none');
+      commitBtn.disabled = (mode !== 'edit') || !hasStroke;
+      clearStrokeBtn.disabled = (mode !== 'edit') || !hasStroke;
+    }
+
+    function setupCanvasSizes() {
       const rect = photo.getBoundingClientRect();
       const cssW = Math.max(1, Math.round(rect.width));
       const cssH = Math.max(1, Math.round(rect.height));
 
-      // デバイスピクセル比でシャープに
-      const dpr = window.devicePixelRatio || 1;
+      dpr = window.devicePixelRatio || 1;
 
-      canvas.style.width = cssW + 'px';
-      canvas.style.height = cssH + 'px';
-
-      canvas.width = Math.round(cssW * dpr);
-      canvas.height = Math.round(cssH * dpr);
-
-      ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-      // 座標をCSS px基準にする
+      // 表示用 overlay
+      overlay.style.width = cssW + 'px';
+      overlay.style.height = cssH + 'px';
+      overlay.width = Math.round(cssW * dpr);
+      overlay.height = Math.round(cssH * dpr);
+      ctx = overlay.getContext('2d', { willReadFrequently: true });
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // ブラシ設定
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = BRUSH_SIZE;
+      // stroke（編集中の1領域）
+      strokeCanvas.width = Math.round(cssW * dpr);
+      strokeCanvas.height = Math.round(cssH * dpr);
+      strokeCtx = strokeCanvas.getContext('2d', { willReadFrequently: true });
+      strokeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // ブラシ共通設定
+      [ctx, strokeCtx].forEach(c => {
+        c.lineCap = 'round';
+        c.lineJoin = 'round';
+        c.strokeStyle = '#fff';
+        c.lineWidth = BRUSH_SIZE;
+      });
+
+      // 既存領域Canvasも同サイズで作っているので、ここでリサイズすると消えます。
+      // MVPは「回転/リサイズしたら描き直し」で割り切り。
+    }
+
+    function clearStroke() {
+      if (!strokeCtx) return;
+      strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+      hasStroke = false;
+      updateUI();
+      redrawOverlay();
+    }
+
+    function clearAll() {
+      regions.length = 0;
+      clearStroke();
+      nextId = 1;
+      updateUI();
+      redrawOverlay();
+    }
+
+    function commitStrokeAsRegion() {
+      if (!hasStroke) return;
+
+      // strokeCanvas をコピーして領域Canvasにする
+      const c = document.createElement('canvas');
+      c.width = strokeCanvas.width;
+      c.height = strokeCanvas.height;
+
+      const cctx = c.getContext('2d', { willReadFrequently: true });
+      // 座標系合わせ（CSS px基準）
+      cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cctx.drawImage(strokeCanvas, 0, 0);
+
+      regions.push({
+        id: nextId++,
+        canvas: c,
+        ctx: cctx,
+        visible: true
+      });
+
+      clearStroke();
+      updateUI();
+      redrawOverlay();
+    }
+
+    function redrawOverlay() {
+      if (!ctx) return;
+
+      // 表示用overlayをクリア
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+      // 学習モード：visible の領域だけ描画
+      // 編集モード：確定済み領域 + 編集中strokeを描画
+      if (mode === 'study') {
+        for (const r of regions) {
+          if (!r.visible) continue;
+          ctx.drawImage(r.canvas, 0, 0);
+        }
+      } else {
+        for (const r of regions) {
+          // 編集中は常に見える（個別ON/OFFは学習モードで）
+          ctx.drawImage(r.canvas, 0, 0);
+        }
+        // 編集中のstroke
+        ctx.drawImage(strokeCanvas, 0, 0);
+      }
     }
 
     function getPosFromEvent(e) {
-      const rect = canvas.getBoundingClientRect();
+      const rect = overlay.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       return { x, y };
     }
 
+    // タップ位置に「塗り」がある領域を上から探す（最後に作った領域優先）
+    function findRegionAt(x, y) {
+      // x,y はCSS px
+      // regionsのcanvasはdpr適用済みのサイズなので、ピクセル参照はdprを掛ける
+      const px = Math.round(x * dpr);
+      const py = Math.round(y * dpr);
+
+      for (let i = regions.length - 1; i >= 0; i--) {
+        const r = regions[i];
+        const img = r.ctx.getImageData(px, py, 1, 1).data;
+        // alphaが0以外ならその領域に当たってる（白塗りの部分）
+        if (img[3] !== 0) return r;
+      }
+      return null;
+    }
+
+    // ---- 描画イベント（編集モードのみ） ----
     function onPointerDown(e) {
-      // 画像未表示なら無視
       if (stage.style.display === 'none') return;
 
+      if (mode === 'study') {
+        // 学習モードはタップで切替
+        const { x, y } = getPosFromEvent(e);
+        const r = findRegionAt(x, y);
+        if (r) {
+          r.visible = !r.visible;
+          redrawOverlay();
+        }
+        return;
+      }
+
+      // 編集モード：描く
       drawing = true;
-      canvas.setPointerCapture(e.pointerId);
+      overlay.setPointerCapture(e.pointerId);
 
       const { x, y } = getPosFromEvent(e);
       lastX = x; lastY = y;
 
-      // 点だけでも描けるように短い線を引く
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + 0.01, y + 0.01);
-      ctx.stroke();
+      strokeCtx.beginPath();
+      strokeCtx.moveTo(x, y);
+      strokeCtx.lineTo(x + 0.01, y + 0.01);
+      strokeCtx.stroke();
+
+      hasStroke = true;
+      updateUI();
+      redrawOverlay();
     }
 
     function onPointerMove(e) {
-      if (!drawing) return;
+      if (!drawing || mode !== 'edit') return;
       const { x, y } = getPosFromEvent(e);
 
-      ctx.beginPath();
-      ctx.moveTo(lastX, lastY);
-      ctx.lineTo(x, y);
-      ctx.stroke();
+      strokeCtx.beginPath();
+      strokeCtx.moveTo(lastX, lastY);
+      strokeCtx.lineTo(x, y);
+      strokeCtx.stroke();
 
       lastX = x; lastY = y;
+      redrawOverlay();
     }
 
     function onPointerUp(e) {
       if (!drawing) return;
       drawing = false;
-      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+      try { overlay.releasePointerCapture(e.pointerId); } catch {}
     }
 
-    // 入力：画像読み込み
+    overlay.addEventListener('pointerdown', onPointerDown);
+    overlay.addEventListener('pointermove', onPointerMove);
+    overlay.addEventListener('pointerup', onPointerUp);
+    overlay.addEventListener('pointercancel', onPointerUp);
+
+    // ---- ボタン ----
+    commitBtn.addEventListener('click', commitStrokeAsRegion);
+    clearStrokeBtn.addEventListener('click', clearStroke);
+    clearAllBtn.addEventListener('click', clearAll);
+
+    modeBtn.addEventListener('click', () => {
+      setMode(mode === 'edit' ? 'study' : 'edit');
+      updateUI();
+    });
+
+    // ---- 画像読み込み ----
     input.addEventListener('change', () => {
       const file = input.files[0];
       if (!file) return;
 
       const url = URL.createObjectURL(file);
       photo.src = url;
-
       stage.style.display = 'block';
 
-      // 画像のサイズが確定してからキャンバスを合わせる
+      // 状態初期化
+      regions.length = 0;
+      nextId = 1;
+      hasStroke = false;
+      setMode('edit');
+
       photo.onload = () => {
-        fitCanvasToImage();
+        setupCanvasSizes();
+        clearStroke();
+        updateUI();
+        redrawOverlay();
       };
     });
 
-    // 画面回転やリサイズでズレるのを防ぐ（初期は“消える”より“ズレない”を優先）
-    window.addEventListener('resize', () => {
-      if (stage.style.display === 'none') return;
-      // 注意：ここでfitし直すと既存の白塗りが消えるので、まずは何もしない設計にしてる
-      // 将来は「マスクを保存して復元」するので、そこで対応するのが安全。
-    });
-
-    // 描画イベント
-    canvas.addEventListener('pointerdown', onPointerDown);
-    canvas.addEventListener('pointermove', onPointerMove);
-    canvas.addEventListener('pointerup', onPointerUp);
-    canvas.addEventListener('pointercancel', onPointerUp);
-
-    // 全消去
-    clearBtn.addEventListener('click', () => {
-      if (!ctx) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    });
-
-    // 表示/非表示（学習モードの原型）
-    toggleBtn.addEventListener('click', () => {
-      maskVisible = !maskVisible;
-      canvas.style.display = maskVisible ? 'block' : 'none';
-      toggleBtn.textContent = '白塗り：' + (maskVisible ? '表示' : '非表示');
-    });
+    // 初期UI
+    updateUI();
   </script>
 </body>
 </html>
