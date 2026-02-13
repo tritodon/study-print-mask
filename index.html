@@ -148,7 +148,7 @@
       <div class="row">
         <span class="pill" id="storagePill">保存数: 0</span>
       </div>
-      <div class="hint">保存は端末内（IndexedDB）です。Safari等のサイトデータ削除で消える可能性があります。<br> 保存期限：14日</div>
+      <div class="hint">保存は端末内（IndexedDB）です。Safari等のサイトデータ削除で消える可能性があります。<br> 保存期限：30日</div>
       <div id="list" class="list"></div>
     </section>
     <!-- ===== EDIT VIEW ===== -->
@@ -268,7 +268,7 @@
     /* =========================
        App State
     ========================= */
-    const TTL_DAYS = 14;
+    const TTL_DAYS = 30;
     const nowMs = () => Date.now();
     const daysMs = (d) => d * 24 * 60 * 60 * 1000;
 
