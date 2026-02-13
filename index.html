@@ -129,6 +129,10 @@
       border-color: #f0c0c0;
       background: #fff7f7;
     }
+
+    #titleInput {
+      flex: 1 1 auto;
+    }
   </style>
 </head>
 <body>
@@ -140,6 +144,8 @@
         <button id="newBtn" type="button"><i class="fa-solid fa-circle-plus"></i> 新規プリント</button>
         <button id="cleanupBtn" type="button"><i class="fa-solid fa-trash-can"></i> 期限切れを削除</button>
         <button id="deleteAllBtn" type="button"><i class="fa-solid fa-trash-can"></i> 全データ削除</button>
+      </div>
+      <div class="row">
         <span class="pill" id="storagePill">保存数: 0</span>
       </div>
       <div class="hint">保存は端末内（IndexedDB）です。Safari等のサイトデータ削除で消える可能性があります。<br> 保存期限：14日</div>
@@ -147,9 +153,9 @@
     </section>
     <!-- ===== EDIT VIEW ===== -->
     <section id="editView" class="view">
-      <div class="row">
+      <div class="row savefile">
         <button id="backBtn" type="button"><i class="fa-solid fa-delete-left"></i></button>
-        <input id="titleInput" type="text" placeholder="タイトル（任意）" />
+        <input id="titleInput" type="text" placeholder="保存するならタイトルいれてね" />
         <button id="saveBtn" type="button" disabled><i class="fa-solid fa-floppy-disk"></i></button>
       </div>
       <div class="row">
