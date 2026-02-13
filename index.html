@@ -749,8 +749,11 @@
       if (current.mode === 'edit' && pointers.size === 2) {
         // ピンチ開始
         pinching = true;
+
+        // ★ここが超重要
         drawing = false;
-        hasStroke = false; // ストローク確定はしない（途中ならキャンセル扱いにしてもOK）
+        hasStroke = false;
+        clearStroke();      // ← 途中まで描いた線を消す
 
         const pts = Array.from(pointers.values());
         pinchStartDist = dist(pts[0], pts[1]);
@@ -810,7 +813,7 @@
         return; // 描画しない
       }
 
-      if (!drawing || current.mode !== 'edit') return;
+   if (!drawing || pinching || current.mode !== 'edit') return;
 
       const { x, y } = getPosFromEvent(e);
       strokeCtx.beginPath();
@@ -822,24 +825,28 @@
       redrawOverlay();
     }
 
-    async function onPointerUp(e) {
-      pointers.delete(e.pointerId);
+  async function onPointerUp(e) {
+    pointers.delete(e.pointerId);
 
-      if (pinching) {
-        if (pointers.size < 2) {
-          pinching = false;
-        }
-        return; // ピンチ終了時は描画確定しない
+    if (pinching) {
+      if (pointers.size < 2) {
+        pinching = false;
       }
-
-      if (!drawing) return;
       drawing = false;
-      try { overlay.releasePointerCapture(e.pointerId); } catch { }
-
-      if (current.mode === 'edit' && hasStroke) {
-        await addRegionFromStroke(); // 1なぞり=1問
-      }
+      hasStroke = false;
+      clearStroke();
+      return; // ← 絶対に addRegion しない
     }
+
+    if (!drawing) return;
+    drawing = false;
+
+    try { overlay.releasePointerCapture(e.pointerId); } catch { }
+
+    if (current.mode === 'edit' && hasStroke) {
+      await addRegionFromStroke();
+    }
+  }
 
     overlay.addEventListener('pointerdown', onPointerDown);
     overlay.addEventListener('pointermove', onPointerMove);
