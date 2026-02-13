@@ -759,7 +759,7 @@
     function onPointerDown(e) {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-      if (current.mode === 'edit' && pointers.size === 2) {
+      if (pointers.size === 2) {
         // ピンチ開始
         pinching = true;
 
