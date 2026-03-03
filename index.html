@@ -25,7 +25,8 @@
       margin: 12px 0;
     }
 
-    button {
+    button,
+    label.inputImage{
       padding: 8px 12px;
       background: #2ea9e0;
       border: 0;
@@ -46,6 +47,7 @@
       border-radius: 0.375rem;
       padding-right: 0.5rem;
       width: 100vw;
+      display:none;
     }
 
     ::file-selector-button,
@@ -178,8 +180,9 @@
         <button id="modeBtn" type="button" disabled>学習モードへ</button>
       </div>
       <div class="row">
-        <input id="cameraInput" type="file" accept="image/*" capture="environment" />
-        <input id="fileInput" type="file" accept="image/*" />
+        <label class="inputImage"><i class="fa-solid fa-camera"></i> カメラ起動
+        <input id="cameraInput" type="file" accept="image/*" capture="environment" /></label>
+        <label class="inputImage"><i class="fa-solid fa-image"></i> ファイル選択<input id="fileInput" type="file" accept="image/*" /></label>
       </div>
       <div class="row">
         <span class="hint">編集モード：1なぞり=1問（自動確定）／学習モード：領域タップで表示/非表示</span>
