@@ -178,7 +178,10 @@
         <button id="modeBtn" type="button" disabled>学習モードへ</button>
       </div>
       <div class="row">
-        <input type="file" accept="image/*" capture="environment" id="imageInput" />
+        <input id="cameraInput" type="file" accept="image/*" capture="environment" />
+        <input id="fileInput" type="file" accept="image/*" />
+      </div>
+      <div class="row">
         <span class="hint">編集モード：1なぞり=1問（自動確定）／学習モード：領域タップで表示/非表示</span>
       </div>
       <div class="stage" id="stage" style="display:none;">
@@ -1029,53 +1032,55 @@
     zoomResetBtn.addEventListener('click', resetZoom);
 
     // image input: new base image
-    input.addEventListener('change', async () => {
-      const file = input.files[0];
-      if (!file) return;
+    async function handlePickedFile(file) {
+  if (!file) return;
 
-      statusPill.textContent = '画像を処理中…';
-      saveBtn.disabled = true;
+  statusPill.textContent = '画像を処理中…';
+  saveBtn.disabled = true;
 
-      try {
-        // 圧縮してdataURL生成（安全版）
-        const compressed = await compressImageFileToDataUrlSafe(file, 1600, 0.75);
-        current.imageDataUrl = compressed;
-      } catch (e) {
-        // 最悪：圧縮に失敗したら非圧縮で表示（止めない）
-        console.warn('compress failed, fallback to raw', e);
-        current.imageDataUrl = await fileToDataUrl(file);
-      }
+  try {
+    const compressed = await compressImageFileToDataUrlSafe(file, 1600, 0.75);
+    current.imageDataUrl = compressed;
+  } catch (e) {
+    console.warn('compress failed, fallback to raw', e);
+    current.imageDataUrl = await fileToDataUrl(file);
+  }
 
-      // 編集状態初期化
-      current.regions = [];
-      regionImageCache.clear();
-      nextRegionId = 1;
-      undoStack = [];
-      redoStack = [];
-      hasStroke = false;
+  current.regions = [];
+  regionImageCache.clear();
+  nextRegionId = 1;
+  undoStack = [];
+  redoStack = [];
+  hasStroke = false;
 
-      photo.src = current.imageDataUrl;
-      stage.style.display = 'block';
+  photo.src = current.imageDataUrl;
+  stage.style.display = 'block';
 
-      photo.onload = () => {
-        setupCanvasSizes();
-        viewScale = 1;
-        viewX = 0;
-        viewY = 0;
-        applyViewportTransform();
-        clearStroke();
-        setMode('edit');
-        statusPill.textContent = '未保存';
-        saveBtn.disabled = false;
-        updateEditorUI();
-        redrawOverlay();
-      };
+  photo.onload = () => {
+    setupCanvasSizes();
+    viewScale = 1;
+    viewX = 0;
+    viewY = 0;
+    applyViewportTransform();
 
-      photo.onerror = () => {
-        statusPill.textContent = '画像の表示に失敗';
-        console.error('photo load failed');
-      };
-    });
+    clearStroke();
+    setMode('edit');
+
+    statusPill.textContent = '未保存';
+    saveBtn.disabled = false;
+    updateEditorUI();
+    redrawOverlay();
+  };
+}
+    const cameraInput = document.getElementById('cameraInput');
+const fileInput = document.getElementById('fileInput');
+    cameraInput.addEventListener('change', (e) => {
+  handlePickedFile(e.target.files?.[0]);
+});
+
+fileInput.addEventListener('change', (e) => {
+  handlePickedFile(e.target.files?.[0]);
+});
 
     /* =========================
        FileUpload
