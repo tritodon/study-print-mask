@@ -326,7 +326,10 @@
     const modePill = document.getElementById('modePill');
     const modeBtn = document.getElementById('modeBtn');
 
-    const input = document.getElementById('imageInput');
+   // const input = document.getElementById('imageInput');
+    const cameraInput = document.getElementById('cameraInput');
+const fileInput = document.getElementById('fileInput');
+    
     const stage = document.getElementById('stage');
     const photo = document.getElementById('photo');
     const overlay = document.getElementById('overlay');
@@ -1072,8 +1075,7 @@
     redrawOverlay();
   };
 }
-    const cameraInput = document.getElementById('cameraInput');
-const fileInput = document.getElementById('fileInput');
+
     cameraInput.addEventListener('change', (e) => {
   handlePickedFile(e.target.files?.[0]);
 });
