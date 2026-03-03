@@ -895,7 +895,8 @@ const fileInput = document.getElementById('fileInput');
 
       stage.style.display = 'none';
       photo.src = '';
-      input.value = '';
+      if (cameraInput) cameraInput.value = '';
+      if (fileInput) fileInput.value = '';
       setMode('edit');
       updateEditorUI();
     }
