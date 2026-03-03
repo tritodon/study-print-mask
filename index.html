@@ -1076,13 +1076,21 @@ const fileInput = document.getElementById('fileInput');
   };
 }
 
-    cameraInput.addEventListener('change', (e) => {
-  handlePickedFile(e.target.files?.[0]);
-});
+    
+    const cameraInput = document.getElementById('cameraInput');
+const fileInput   = document.getElementById('fileInput');
 
-fileInput.addEventListener('change', (e) => {
-  handlePickedFile(e.target.files?.[0]);
-});
+if (cameraInput) {
+  cameraInput.addEventListener('change', (e) => {
+    handlePickedFile(e.target.files?.[0]);
+  });
+}
+
+if (fileInput) {
+  fileInput.addEventListener('change', (e) => {
+    handlePickedFile(e.target.files?.[0]);
+  });
+}
 
     /* =========================
        FileUpload
